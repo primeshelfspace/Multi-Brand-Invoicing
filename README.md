@@ -197,3 +197,7 @@ These are decisions or dependencies that are not ours to make up:
   and `ACH` are offered on the actual payment page.
 - **No real login (`apps/admin`).** See "No login yet" in Quick start — the
   dev bearer token is a stopgap, not FR-AUTH-001.
+#   M u l t i - B r a n d - I n v o i c i n g  
+ #   M u l t i - B r a n d - I n v o i c i n g  
+ #   M u l t i - B r a n d - I n v o i c i n g  
+ 
