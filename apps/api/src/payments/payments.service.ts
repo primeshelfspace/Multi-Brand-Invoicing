@@ -204,12 +204,25 @@ export class PaymentsService {
    * exercised by FakeGateway's success/decline scenarios, which resolve
    * synchronously in createIntent above — this exists for the pending
    * scenario and for a real gateway that settles out of band.
+   *
+   * `brandId` comes from the webhook URL itself (each brand's Stripe account
+   * is configured with its own callback URL, e.g.
+   * /public/webhooks/stripe/:brandId) — it is what verifySignature uses to
+   * fetch *that* brand's own webhook secret, and it is checked again below
+   * against the resolved payment's own brandId so a signature valid for one
+   * brand's Stripe account can never be replayed to settle another's payment
+   * even if a gatewayReference were ever guessed or collided. null for a
+   * provider with one shared secret regardless of brand (FakeGateway).
    */
-  async handleWebhook(rawBody: Buffer, headers: Readonly<Record<string, string>>): Promise<void> {
-    if (!this.gateway.verifySignature(rawBody, headers)) {
+  async handleWebhook(
+    rawBody: Buffer,
+    headers: Readonly<Record<string, string>>,
+    brandId: string | null = null,
+  ): Promise<void> {
+    if (!(await this.gateway.verifySignature(rawBody, headers, brandId))) {
       throw new BadRequestException('invalid webhook signature');
     }
-    const event = this.gateway.parseWebhook(rawBody);
+    const event = this.gateway.parseWebhook(rawBody, brandId);
 
     // Resolution by gateway reference is unscoped on purpose: which brand this
     // payment belongs to is exactly what this lookup exists to discover, and
@@ -225,6 +238,18 @@ export class PaymentsService {
     );
     if (!payment) {
       this.logger.warn(`webhook for unknown gateway reference ${event.gatewayReference}`);
+      return;
+    }
+
+    // Defense in depth (multi-tenant Stripe): the signature above already
+    // proves this event came from brandId's own Stripe account, but a
+    // mismatch here would mean the resolved payment does not belong to the
+    // brand whose secret validated it — refuse rather than settle the wrong
+    // brand's invoice.
+    if (brandId && payment.brandId !== brandId) {
+      this.logger.warn(
+        `webhook brand mismatch: URL brand ${brandId} does not own payment ${payment.id} (brand ${payment.brandId})`,
+      );
       return;
     }
 

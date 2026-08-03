@@ -9,27 +9,35 @@ import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-
  * confirmed straight against Stripe from the browser — this component and the
  * rest of this app never see a card number, and the client_secret below is the
  * only thing standing between "form" and "money moved" (TDD-001 §10.2).
+ *
+ * `publishableKey` is a prop, not a build-time NEXT_PUBLIC_ env var: Stripe is
+ * multi-tenant here, so which Stripe account (and therefore which
+ * publishable key) applies depends on which brand's invoice this is —
+ * something only known at request time, from the invoice API response.
  */
-const publishableKey = process.env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'];
-const stripePromise = publishableKey ? loadStripe(publishableKey) : null;
-
 export function StripeCardForm({
+  publishableKey,
   clientSecret,
   returnUrl,
   onSucceeded,
   onFailed,
   onCancel,
 }: {
+  publishableKey: string | null;
   clientSecret: string;
   returnUrl: string;
   onSucceeded: () => void;
   onFailed: (reason: string | null) => void;
   onCancel: () => void;
 }) {
+  // One Stripe.js load per distinct key — stable across re-renders of this
+  // component for the lifetime of this invoice page.
+  const stripePromise = useMemo(() => (publishableKey ? loadStripe(publishableKey) : null), [publishableKey]);
+
   if (!stripePromise) {
     return (
       <div className="mt-6 rounded-md bg-danger-surface p-4 text-center text-sm text-danger">
-        Card payments are not configured (missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY).
+        This brand has not connected a Stripe account yet.
       </div>
     );
   }

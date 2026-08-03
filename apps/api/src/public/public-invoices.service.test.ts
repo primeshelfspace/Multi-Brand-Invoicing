@@ -15,6 +15,7 @@ import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { createFakeQueueService } from '../infra/queue/fake-queue.service.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { InvoicesService } from '../invoices/invoices.service.js';
+import { StripeAccountService } from '../integrations/stripe-account.service.js';
 import { PublicInvoicesService } from './public-invoices.service.js';
 
 loadEnv();
@@ -27,7 +28,7 @@ describeWithDb('PublicInvoicesService', () => {
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
   const invoices = new InvoicesService(prisma, queue);
-  const publicInvoices = new PublicInvoicesService(prisma);
+  const publicInvoices = new PublicInvoicesService(prisma, new StripeAccountService(prisma, env!));
   const owner = new PrismaClient({ datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } } });
 
   let solsticeId = '';

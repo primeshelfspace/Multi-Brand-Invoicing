@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import {
   IntegrationError,
@@ -12,10 +12,18 @@ import {
   type RefundInput,
   type RefundResult,
 } from '@fenwick/shared';
-import { ENV, type Env } from '../../config/env.js';
+import { StripeAccountService } from '../../integrations/stripe-account.service.js';
+
+const STRIPE_API_VERSION = '2025-02-24.acacia';
 
 /**
  * StripeGatewayAdapter — real PaymentGatewayPort implementation (TDD-001 §10.2).
+ *
+ * Multi-tenant: there is no single Stripe account for this adapter to hold.
+ * Every method resolves the calling brand's own encrypted credentials via
+ * StripeAccountService and builds a fresh Stripe client from them — brand A's
+ * payments are only ever created, captured, refunded or settled against
+ * brand A's own Stripe account.
  *
  * Card data never reaches this process: the payment page collects it via
  * Stripe Elements client-side and confirms the PaymentIntent directly against
@@ -29,28 +37,15 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   readonly providerName = 'stripe';
 
   private readonly logger = new Logger(StripeGatewayAdapter.name);
-  private client: Stripe | null = null;
 
-  constructor(@Inject(ENV) private readonly env: Env) {}
-
-  /**
-   * Constructed lazily, not in the constructor: NestJS instantiates every
-   * provider in GatewayModule regardless of which one PAYMENT_GATEWAY_DRIVER
-   * actually selects, and the Stripe SDK throws synchronously on an empty
-   * API key — which would crash the app under the fake/numbers drivers too.
-   * By the time this is actually called, env.ts's superRefine already
-   * guarantees STRIPE_SECRET_KEY is set (driver=stripe requires it).
-   */
-  private get stripe(): Stripe {
-    this.client ??= new Stripe(this.env.STRIPE_SECRET_KEY ?? '', { apiVersion: '2025-02-24.acacia' });
-    return this.client;
-  }
+  constructor(private readonly stripeAccounts: StripeAccountService) {}
 
   async createIntent(input: CreateIntentInput): Promise<PaymentIntent> {
+    const stripe = await this.clientFor(input.brandId);
     const paymentMethodTypes = this.paymentMethodTypesFor(input);
 
     try {
-      const pi = await this.stripe.paymentIntents.create(
+      const pi = await stripe.paymentIntents.create(
         {
           amount: input.amountMinor,
           currency: input.currency.toLowerCase(),
@@ -73,8 +68,9 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   }
 
   async capture(input: CaptureInput): Promise<PaymentIntent> {
+    const stripe = await this.clientFor(input.brandId);
     try {
-      const pi = await this.stripe.paymentIntents.capture(
+      const pi = await stripe.paymentIntents.capture(
         input.gatewayReference,
         input.amountMinor === undefined ? undefined : { amount_to_capture: input.amountMinor },
         { idempotencyKey: input.idempotencyKey },
@@ -86,8 +82,9 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   }
 
   async refund(input: RefundInput): Promise<RefundResult> {
+    const stripe = await this.clientFor(input.brandId);
     try {
-      const refund = await this.stripe.refunds.create(
+      const refund = await stripe.refunds.create(
         {
           payment_intent: input.gatewayReference,
           amount: input.amountMinor,
@@ -106,33 +103,51 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
     }
   }
 
-  async void(gatewayReference: string): Promise<PaymentIntent> {
+  async void(gatewayReference: string, brandId: string): Promise<PaymentIntent> {
+    const stripe = await this.clientFor(brandId);
     try {
-      const pi = await this.stripe.paymentIntents.cancel(gatewayReference);
+      const pi = await stripe.paymentIntents.cancel(gatewayReference);
       return this.toPaymentIntent(pi, pi.currency.toUpperCase() as CurrencyCode);
     } catch (error) {
       throw this.wrap(error, 'void');
     }
   }
 
-  async retrieve(gatewayReference: string): Promise<PaymentIntent> {
+  async retrieve(gatewayReference: string, brandId: string): Promise<PaymentIntent> {
+    const stripe = await this.clientFor(brandId);
     try {
-      const pi = await this.stripe.paymentIntents.retrieve(gatewayReference);
+      const pi = await stripe.paymentIntents.retrieve(gatewayReference);
       return this.toPaymentIntent(pi, pi.currency.toUpperCase() as CurrencyCode);
     } catch (error) {
       throw this.wrap(error, 'retrieve');
     }
   }
 
-  verifySignature(payload: string | Buffer, headers: Readonly<Record<string, string>>): boolean {
+  async verifySignature(
+    payload: string | Buffer,
+    headers: Readonly<Record<string, string>>,
+    brandId: string | null,
+  ): Promise<boolean> {
     const signature = headers['stripe-signature'] ?? headers['Stripe-Signature'];
-    if (!signature || !this.env.STRIPE_WEBHOOK_SECRET) return false;
+    if (!signature || !brandId) return false;
+
+    const credentials = await this.stripeAccounts.getCredentialsForGateway(brandId);
+    if (!credentials) {
+      this.logger.warn(`webhook received for brand ${brandId}, which has no Stripe account configured`);
+      return false;
+    }
 
     try {
-      this.stripe.webhooks.constructEvent(payload, signature, this.env.STRIPE_WEBHOOK_SECRET);
+      // A brand-scoped client purely to reuse the SDK's constructEvent — this
+      // call makes no network request.
+      new Stripe(credentials.secretKey, { apiVersion: STRIPE_API_VERSION }).webhooks.constructEvent(
+        payload,
+        signature,
+        credentials.webhookSecret,
+      );
       return true;
     } catch (error) {
-      this.logger.warn(`stripe webhook signature rejected: ${(error as Error).message}`);
+      this.logger.warn(`stripe webhook signature rejected for brand ${brandId}: ${(error as Error).message}`);
       return false;
     }
   }
@@ -140,8 +155,10 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   /**
    * Called only after verifySignature has already checked the signature —
    * re-deriving the event here is just a JSON parse, not a second trust check.
+   * `brandId` is accepted for interface symmetry with verifySignature; parsing
+   * the already-verified payload needs no further per-brand lookup.
    */
-  parseWebhook(payload: string | Buffer): GatewayWebhookEvent {
+  parseWebhook(payload: string | Buffer, _brandId: string | null): GatewayWebhookEvent {
     const event = JSON.parse(payload.toString()) as Stripe.Event;
     const object = event.data.object as Stripe.PaymentIntent | Stripe.Charge;
     const gatewayReference = 'payment_intent' in object && typeof object.payment_intent === 'string'
@@ -159,6 +176,18 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
         'last_payment_error' in object ? (object.last_payment_error?.message ?? null) : null,
       raw: event,
     };
+  }
+
+  private async clientFor(brandId: string): Promise<Stripe> {
+    const credentials = await this.stripeAccounts.getCredentialsForGateway(brandId);
+    if (!credentials) {
+      throw new IntegrationError({
+        message: `Stripe is not configured for brand ${brandId}`,
+        errorClass: 'VALIDATION',
+        provider: this.providerName,
+      });
+    }
+    return new Stripe(credentials.secretKey, { apiVersion: STRIPE_API_VERSION });
   }
 
   private paymentMethodTypesFor(input: CreateIntentInput): string[] {

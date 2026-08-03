@@ -34,6 +34,10 @@ export interface PublicInvoice {
     ach: boolean;
     check: boolean;
   };
+  /** This brand's own Stripe publishable key (multi-tenant Stripe) — never a
+   * key shared across brands, and never baked into this app's build. Null if
+   * the brand has not connected Stripe yet. */
+  stripePublishableKey: string | null;
 }
 
 export type InvoiceLookup =

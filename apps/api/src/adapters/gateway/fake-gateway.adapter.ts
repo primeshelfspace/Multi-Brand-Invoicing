@@ -135,7 +135,7 @@ export class FakeGatewayAdapter implements PaymentGatewayPort {
     };
   }
 
-  async void(gatewayReference: string): Promise<PaymentIntent> {
+  async void(gatewayReference: string, _brandId: string): Promise<PaymentIntent> {
     const stored = this.require(gatewayReference);
     const intent: PaymentIntent = {
       ...stored.intent,
@@ -146,11 +146,16 @@ export class FakeGatewayAdapter implements PaymentGatewayPort {
     return intent;
   }
 
-  async retrieve(gatewayReference: string): Promise<PaymentIntent> {
+  async retrieve(gatewayReference: string, _brandId: string): Promise<PaymentIntent> {
     return this.require(gatewayReference).intent;
   }
 
-  verifySignature(payload: string | Buffer, headers: Readonly<Record<string, string>>): boolean {
+  // eslint-disable-next-line @typescript-eslint/require-await -- signature match with the async, per-brand-secret-lookup Stripe implementation
+  async verifySignature(
+    payload: string | Buffer,
+    headers: Readonly<Record<string, string>>,
+    _brandId: string | null,
+  ): Promise<boolean> {
     const provided = headers['x-fake-signature'] ?? headers['X-Fake-Signature'];
     if (!provided) return false;
 
@@ -162,7 +167,7 @@ export class FakeGatewayAdapter implements PaymentGatewayPort {
     return a.length === b.length && timingSafeEqual(a, b);
   }
 
-  parseWebhook(payload: string | Buffer): GatewayWebhookEvent {
+  parseWebhook(payload: string | Buffer, _brandId: string | null): GatewayWebhookEvent {
     const body = JSON.parse(payload.toString()) as Record<string, unknown>;
     return {
       id: String(body['id'] ?? randomUUID()),

@@ -337,6 +337,43 @@ export function updatePaymentMethodSettings(
   });
 }
 
+// --- Stripe account (multi-tenant: one Stripe account per brand) -------------
+
+export interface StripeAccountStatus {
+  connected: boolean;
+  /** Safe to display — publishable keys are not secret. */
+  publishableKey: string | null;
+}
+
+export function getStripeAccountStatus(brandId: string): Promise<StripeAccountStatus> {
+  return apiFetch<StripeAccountStatus>(`/brands/${brandId}/integrations/stripe/status`);
+}
+
+export interface StripeCredentialsFormInput {
+  secretKey: string;
+  publishableKey: string;
+  webhookSecret: string;
+}
+
+/** The API validates the secret key against Stripe itself before saving — a
+ * bad key comes back as a 400 with Stripe's own rejection message. */
+export function saveStripeCredentials(
+  brandId: string,
+  input: StripeCredentialsFormInput,
+): Promise<StripeAccountStatus> {
+  return apiFetch<StripeAccountStatus>(`/brands/${brandId}/integrations/stripe/credentials`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Re-verifies whatever is currently saved against Stripe — useful once the
+ * secret key field has gone blank again (write-only) and there is nothing
+ * left on screen to re-check by eye. */
+export function testStripeConnection(brandId: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/stripe/test`, { method: 'POST' });
+}
+
 // --- Zoho integration (FR-ZHO) ------------------------------------------------
 
 export interface ZohoConnectionStatus {

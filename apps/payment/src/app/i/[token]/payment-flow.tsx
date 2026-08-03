@@ -165,6 +165,7 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
   if (step.kind === 'card-confirm') {
     return (
       <StripeCardForm
+        publishableKey={invoice.stripePublishableKey}
         clientSecret={step.clientSecret}
         returnUrl={typeof window !== 'undefined' ? window.location.href : ''}
         onSucceeded={() => setStep({ kind: 'success' })}

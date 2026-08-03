@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PAYMENT_GATEWAY_PORT } from '@fenwick/shared';
 import { ENV, type Env } from '../../config/env.js';
+import { IntegrationsModule } from '../../integrations/integrations.module.js';
 import { FakeGatewayAdapter } from './fake-gateway.adapter.js';
 import { NumbersGatewayAdapter } from './numbers-gateway.adapter.js';
 import { StripeGatewayAdapter } from './stripe-gateway.adapter.js';
@@ -8,8 +9,13 @@ import { StripeGatewayAdapter } from './stripe-gateway.adapter.js';
 /**
  * Composition point for PaymentGatewayPort. The driver is a configuration
  * value; nothing above this line knows which adapter is bound.
+ *
+ * IntegrationsModule is imported for StripeAccountService — StripeGatewayAdapter
+ * resolves each brand's own Stripe credentials through it rather than a
+ * global env var (multi-tenant Stripe).
  */
 @Module({
+  imports: [IntegrationsModule],
   providers: [
     FakeGatewayAdapter,
     NumbersGatewayAdapter,

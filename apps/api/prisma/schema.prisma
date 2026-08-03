@@ -94,6 +94,7 @@ enum IntegrationProvider {
   ZOHO_BOOKS
   NUMBERS_GATEWAY
   SHOPIFY
+  STRIPE
 }
 
 enum ConnectionStatus {

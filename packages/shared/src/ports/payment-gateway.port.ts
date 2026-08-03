@@ -57,12 +57,14 @@ export interface PaymentIntent {
 
 export interface CaptureInput {
   readonly gatewayReference: string;
+  readonly brandId: string;
   readonly amountMinor?: Minor;
   readonly idempotencyKey: string;
 }
 
 export interface RefundInput {
   readonly gatewayReference: string;
+  readonly brandId: string;
   readonly amountMinor: Minor;
   readonly reason?: string;
   readonly idempotencyKey: string;
@@ -108,17 +110,28 @@ export interface PaymentGatewayPort {
   createIntent(input: CreateIntentInput): Promise<PaymentIntent>;
   capture(input: CaptureInput): Promise<PaymentIntent>;
   refund(input: RefundInput): Promise<RefundResult>;
-  void(gatewayReference: string): Promise<PaymentIntent>;
-  retrieve(gatewayReference: string): Promise<PaymentIntent>;
+  void(gatewayReference: string, brandId: string): Promise<PaymentIntent>;
+  retrieve(gatewayReference: string, brandId: string): Promise<PaymentIntent>;
 
   /**
-   * Verifies the webhook signature. Returns false rather than throwing, so an
-   * unsigned probe is a 401 and not a 500.
+   * Verifies the webhook signature. Resolves to false rather than throwing,
+   * so an unsigned probe is a 401 and not a 500. Async because a per-tenant
+   * provider (Stripe) must look up that brand's own signing secret before it
+   * can check anything.
+   *
+   * `brandId` is which brand's credentials to verify against — required for
+   * a provider whose signing secret is per-tenant (Stripe: each brand has its
+   * own Stripe account and webhook secret); null for a provider with one
+   * shared secret regardless of brand (FakeGateway, in local dev/tests).
    */
-  verifySignature(payload: string | Buffer, headers: Readonly<Record<string, string>>): boolean;
+  verifySignature(
+    payload: string | Buffer,
+    headers: Readonly<Record<string, string>>,
+    brandId: string | null,
+  ): Promise<boolean>;
 
   /** Parses a verified payload into the platform's event shape. */
-  parseWebhook(payload: string | Buffer): GatewayWebhookEvent;
+  parseWebhook(payload: string | Buffer, brandId: string | null): GatewayWebhookEvent;
 }
 
 export const PAYMENT_GATEWAY_PORT = Symbol('PaymentGatewayPort');

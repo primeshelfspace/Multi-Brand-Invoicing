@@ -58,8 +58,10 @@ const envSchema = z
     NUMBERS_API_KEY: z.string().optional(),
     NUMBERS_WEBHOOK_SECRET: z.string().optional(),
 
-    STRIPE_SECRET_KEY: z.string().optional(),
-    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    // No STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET here: Stripe is multi-tenant
+    // — each brand's own keys live encrypted in IntegrationConnection (see
+    // StripeAccountService), not a single global credential. PAYMENT_GATEWAY_DRIVER
+    // still selects which adapter class runs; it no longer implies a shared secret.
 
     ZOHO_CLIENT_ID: z.string().optional(),
     ZOHO_CLIENT_SECRET: z.string().optional(),
@@ -89,10 +91,6 @@ const envSchema = z
       require(env.NUMBERS_API_BASE_URL, 'NUMBERS_API_BASE_URL', 'when PAYMENT_GATEWAY_DRIVER=numbers');
       require(env.NUMBERS_API_KEY, 'NUMBERS_API_KEY', 'when PAYMENT_GATEWAY_DRIVER=numbers');
       require(env.NUMBERS_WEBHOOK_SECRET, 'NUMBERS_WEBHOOK_SECRET', 'when PAYMENT_GATEWAY_DRIVER=numbers');
-    }
-    if (env.PAYMENT_GATEWAY_DRIVER === 'stripe') {
-      require(env.STRIPE_SECRET_KEY, 'STRIPE_SECRET_KEY', 'when PAYMENT_GATEWAY_DRIVER=stripe');
-      require(env.STRIPE_WEBHOOK_SECRET, 'STRIPE_WEBHOOK_SECRET', 'when PAYMENT_GATEWAY_DRIVER=stripe');
     }
     if (env.ACCOUNTING_DRIVER === 'zoho') {
       require(env.ZOHO_CLIENT_ID, 'ZOHO_CLIENT_ID', 'when ACCOUNTING_DRIVER=zoho');

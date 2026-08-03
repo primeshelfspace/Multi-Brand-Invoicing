@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
-import { ApiError, getPaymentMethodSettings, listBrands, type Brand } from '@/lib/api';
+import { ApiError, getPaymentMethodSettings, getStripeAccountStatus, listBrands, type Brand } from '@/lib/api';
+import { StripeForm } from '../stripe/stripe-form';
 import { MethodsForm } from './methods-form';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ const FALLBACK_THEME_COLOUR = '#16261F';
 export default async function PaymentMethodsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brandId?: string; saved?: string }>;
+  searchParams: Promise<{ brandId?: string; saved?: string; stripeSaved?: string; stripeTested?: string }>;
 }) {
   const params = await searchParams;
 
@@ -32,11 +33,18 @@ export default async function PaymentMethodsPage({
     achEnabled: false,
     checkEnabled: false,
   };
+  let stripeStatusError: string | null = null;
+  let stripeStatus = { connected: false, publishableKey: null as string | null };
   if (activeBrand) {
     try {
       initial = await getPaymentMethodSettings(activeBrand.id);
     } catch (cause) {
       settingsError = cause instanceof ApiError ? cause.message : String(cause);
+    }
+    try {
+      stripeStatus = await getStripeAccountStatus(activeBrand.id);
+    } catch (cause) {
+      stripeStatusError = cause instanceof ApiError ? cause.message : String(cause);
     }
   }
 
@@ -75,6 +83,16 @@ export default async function PaymentMethodsPage({
                 Saved.
               </div>
             )}
+            {params.stripeSaved && (
+              <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
+                Saved — Stripe confirmed the secret key works.
+              </div>
+            )}
+            {params.stripeTested && (
+              <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
+                Stripe connection test succeeded.
+              </div>
+            )}
 
             {settingsError ? (
               <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
@@ -82,6 +100,35 @@ export default async function PaymentMethodsPage({
               </div>
             ) : (
               activeBrand && <MethodsForm brandId={activeBrand.id} initial={initial} />
+            )}
+
+            {activeBrand && (
+              <div className="mt-8 rounded-lg border border-border bg-surface p-6 shadow-sm">
+                <div className="mb-6">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-medium text-ink-strong">Stripe</h2>
+                    <span
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                        stripeStatus.connected ? 'bg-success' : 'bg-ink-subtle'
+                      }`}
+                      aria-hidden
+                    />
+                  </div>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    {stripeStatus.connected
+                      ? `Connected${stripeStatus.publishableKey ? ` — ${stripeStatus.publishableKey}` : ''}`
+                      : 'Not connected — card payments above will fail until this brand has its own Stripe account.'}
+                  </p>
+                </div>
+
+                {stripeStatusError ? (
+                  <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
+                    Could not load Stripe status: {stripeStatusError}
+                  </div>
+                ) : (
+                  <StripeForm brandId={activeBrand.id} connected={stripeStatus.connected} />
+                )}
+              </div>
             )}
           </>
         )}

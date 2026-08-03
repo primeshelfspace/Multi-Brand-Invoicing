@@ -60,21 +60,25 @@ export class NumbersGatewayAdapter implements PaymentGatewayPort {
     return Promise.reject(this.blocked('refund'));
   }
 
-  void(_gatewayReference: string): Promise<PaymentIntent> {
+  void(_gatewayReference: string, _brandId: string): Promise<PaymentIntent> {
     return Promise.reject(this.blocked('void'));
   }
 
-  retrieve(_gatewayReference: string): Promise<PaymentIntent> {
+  retrieve(_gatewayReference: string, _brandId: string): Promise<PaymentIntent> {
     return Promise.reject(this.blocked('retrieve'));
   }
 
-  verifySignature(_payload: string | Buffer, _headers: Readonly<Record<string, string>>): boolean {
+  verifySignature(
+    _payload: string | Buffer,
+    _headers: Readonly<Record<string, string>>,
+    _brandId: string | null,
+  ): Promise<boolean> {
     // Refusing every signature is the safe failure: an unimplemented verifier
     // that returned true would accept forged settlement notifications.
-    return false;
+    return Promise.resolve(false);
   }
 
-  parseWebhook(_payload: string | Buffer): GatewayWebhookEvent {
+  parseWebhook(_payload: string | Buffer, _brandId: string | null): GatewayWebhookEvent {
     throw this.blocked('parseWebhook');
   }
 

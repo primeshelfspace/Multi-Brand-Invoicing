@@ -12,7 +12,7 @@ import {
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import type { z } from 'zod';
-import { paymentIntentRequestSchema, publicTokenSchema } from '@fenwick/shared';
+import { idSchema, paymentIntentRequestSchema, publicTokenSchema } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { Public } from '../tenancy/authorisation.js';
 import { PaymentsService, type PaymentAttemptResult } from '../payments/payments.service.js';
@@ -70,14 +70,24 @@ export class PublicInvoicesController {
     return { received: true };
   }
 
-  @Post('webhooks/stripe')
+  /**
+   * Multi-tenant Stripe: each brand's Stripe account is configured (in that
+   * Stripe dashboard, or via the Stripe API using that brand's own secret
+   * key) with its own webhook endpoint pointing here, one per brand — this
+   * is what lets PaymentsService.handleWebhook look up the right brand's
+   * webhook secret before it can verify anything.
+   */
+  @Post('webhooks/stripe/:brandId')
   @Public()
   @HttpCode(200)
-  async stripeWebhook(@Req() request: RawBodyRequest<Request>): Promise<{ received: true }> {
+  async stripeWebhook(
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Req() request: RawBodyRequest<Request>,
+  ): Promise<{ received: true }> {
     if (!request.rawBody) {
       throw new BadRequestException('missing request body');
     }
-    await this.payments.handleWebhook(request.rawBody, request.headers as Record<string, string>);
+    await this.payments.handleWebhook(request.rawBody, request.headers as Record<string, string>, brandId);
     return { received: true };
   }
 }

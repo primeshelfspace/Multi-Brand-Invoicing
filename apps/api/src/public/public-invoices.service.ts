@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { evaluateTransition, formatQuantity, type PublicScope } from '@fenwick/shared';
+import { StripeAccountService } from '../integrations/stripe-account.service.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 export interface PublicInvoiceView {
@@ -30,6 +31,11 @@ export interface PublicInvoiceView {
     ach: boolean;
     check: boolean;
   };
+  /** Which Stripe account `loadStripe()` should use — this brand's own
+   * publishable key, never a global one (multi-tenant Stripe). Null if this
+   * brand has not configured Stripe yet; the card option should not be
+   * offered in that case even if cardEnabled is on. */
+  stripePublishableKey: string | null;
 }
 
 /**
@@ -40,7 +46,10 @@ export interface PublicInvoiceView {
  */
 @Injectable()
 export class PublicInvoicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stripeAccounts: StripeAccountService,
+  ) {}
 
   /** Null covers both "no such token" and "deactivated" — deliberately
    * indistinguishable to the caller (TDD-001 §12.1 step 3). */
@@ -105,6 +114,8 @@ export class PublicInvoicesService {
         }
       }
 
+      const stripePublishableKey = await this.stripeAccounts.getPublishableKeyForBrand(invoice.brandId);
+
       return {
         number: invoice.number,
         status: effectiveStatus,
@@ -134,6 +145,7 @@ export class PublicInvoicesService {
           ach: invoice.brand.settings?.achEnabled ?? false,
           check: invoice.brand.settings?.checkEnabled ?? false,
         },
+        stripePublishableKey,
       };
     });
   }
