@@ -6,15 +6,9 @@ import { API_URL, getHealth, type HealthResponse } from '@/lib/api';
 // The status of live dependencies is never cached.
 export const dynamic = 'force-dynamic';
 
-/**
- * Platform status.
- *
- * This is the admin app's scaffold, not a dashboard: it proves the connections
- * the rest of the application will be built on — the API is reachable, its
- * dependencies are up, and brand theming resolves to accessible colours.
- * Feature screens replace it as FR-DSH and FR-INV land.
- */
-export default async function Home() {
+/** System diagnostics: is the API reachable, are its dependencies up, and does
+ * brand theming resolve to accessible colours. Not the dashboard — that's `/`. */
+export default async function StatusPage() {
   let health: HealthResponse | null = null;
   let error: string | null = null;
 
@@ -28,12 +22,9 @@ export default async function Home() {
     <main className="mx-auto max-w-4xl px-6 py-12">
       <header className="mb-10">
         <p className="text-sm uppercase tracking-widest text-ink-subtle">Fenwick Holdings Inc.</p>
-        <h1 className="mt-1 text-2xl font-semibold text-ink-strong">
-          Multi-brand invoicing — admin
-        </h1>
+        <h1 className="mt-1 text-2xl font-semibold text-ink-strong">System status</h1>
         <p className="mt-2 max-w-2xl text-ink-muted">
-          Application scaffold. The framework, tenancy layer and integration ports are wired;
-          feature screens land on top of them.
+          Live dependency and theming diagnostics, not customer-facing data.
         </p>
       </header>
 

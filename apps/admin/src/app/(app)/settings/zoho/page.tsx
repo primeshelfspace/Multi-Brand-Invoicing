@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
-import { ApiError, getZohoStatus, listBrands, type Brand } from '@/lib/api';
-import { backfillZohoAction } from './actions';
+import { ApiError, getZohoActivity, getZohoStatus, listBrands, type Brand, type ZohoActivityEntry } from '@/lib/api';
+import { ZohoLivePanel } from './live-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function ZohoSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brandId?: string; connected?: string; error?: string; backfilled?: string }>;
+  searchParams: Promise<{ brandId?: string; connected?: string; error?: string }>;
 }) {
   const params = await searchParams;
 
@@ -33,24 +33,30 @@ export default async function ZohoSettingsPage({
   const activeBrand = brands.find((b) => b.id === params.brandId) ?? brands[0] ?? null;
 
   let statusError: string | null = null;
-  let status = { connected: false, organizationName: null as string | null, lastSyncAt: null as string | null, health: null as string | null };
+  let status = {
+    connected: false,
+    organizationName: null as string | null,
+    lastSyncAt: null as string | null,
+    lastPulledAt: null as string | null,
+    health: null as string | null,
+  };
+  let activity: ZohoActivityEntry[] = [];
   if (activeBrand) {
     try {
       status = await getZohoStatus(activeBrand.id);
     } catch (cause) {
       statusError = cause instanceof ApiError ? cause.message : String(cause);
     }
+    try {
+      activity = await getZohoActivity(activeBrand.id);
+    } catch {
+      // Not shown as a page-level error — the live panel handles its own
+      // loading, and the status card above already reports the connection
+      // itself accurately either way.
+    }
   }
 
   const errorMessage = params.error ? (ERROR_MESSAGES[params.error] ?? params.error) : null;
-
-  const backfilled = params.backfilled?.split(',').map(Number);
-  const backfillMessage =
-    backfilled && backfilled.length === 3
-      ? backfilled.every((n) => n === 0)
-        ? 'Nothing to queue — everything is already synced.'
-        : `Queued ${backfilled[0]} customer(s), ${backfilled[1]} invoice(s), ${backfilled[2]} payment(s).`
-      : null;
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
@@ -61,8 +67,9 @@ export default async function ZohoSettingsPage({
           </p>
           <h1 className="mt-1 text-2xl font-semibold text-ink-strong">Zoho Books</h1>
           <p className="mt-2 text-ink-muted">
-            FR-ZHO-001. Pushes customers, invoices and payments to Zoho Books as they happen —
-            reading changes back from Zoho is not built yet.
+            FR-ZHO-001/030. Pushes customers, invoices and payments to Zoho Books as they happen,
+            and pulls them back automatically every 15 minutes — Zoho is treated as authoritative
+            for anything pulled.
           </p>
         </header>
 
@@ -71,37 +78,20 @@ export default async function ZohoSettingsPage({
             Could not load brands: {brandsError}
           </div>
         ) : brands.length === 0 ? (
-          <div className="rounded-lg border border-border bg-surface p-6 text-sm text-ink-muted">
-            No brands exist yet.
+          <div className="rounded-lg border border-border bg-surface p-8 text-center">
+            <p className="text-sm text-ink-muted">No brands exist yet.</p>
+            <Link
+              href="/brands/new"
+              className="mt-4 inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground"
+            >
+              Create your first brand
+            </Link>
           </div>
         ) : (
           <>
-            {brands.length > 1 && (
-              <nav className="mb-6 flex flex-wrap gap-2" aria-label="Switch brand">
-                {brands.map((b) => (
-                  <Link
-                    key={b.id}
-                    href={`/settings/zoho?brandId=${b.id}`}
-                    className={`rounded-full px-3 py-1 text-sm font-medium ${
-                      activeBrand?.id === b.id
-                        ? 'bg-ink-strong text-white'
-                        : 'bg-surface-muted text-ink-muted hover:text-ink-strong'
-                    }`}
-                  >
-                    {b.displayName}
-                  </Link>
-                ))}
-              </nav>
-            )}
-
             {params.connected && (
               <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
                 Connected.
-              </div>
-            )}
-            {backfillMessage && (
-              <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
-                {backfillMessage}
               </div>
             )}
             {errorMessage && (
@@ -129,7 +119,13 @@ export default async function ZohoSettingsPage({
                       )}
                       {status.connected && status.lastSyncAt && (
                         <span className="mt-0.5 block text-xs text-ink-muted">
-                          Last sync: {new Date(status.lastSyncAt).toLocaleString()}
+                          Last push: {new Date(status.lastSyncAt).toLocaleString()}
+                        </span>
+                      )}
+                      {status.connected && (
+                        <span className="mt-0.5 block text-xs text-ink-muted">
+                          Last pull:{' '}
+                          {status.lastPulledAt ? new Date(status.lastPulledAt).toLocaleString() : 'Never yet'}
                         </span>
                       )}
                       {status.health && (
@@ -146,30 +142,14 @@ export default async function ZohoSettingsPage({
                     />
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <a
-                      href={`/settings/zoho/connect?brandId=${activeBrand.id}`}
-                      className="inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground"
-                    >
-                      {status.connected ? 'Reconnect Zoho' : 'Connect Zoho'}
-                    </a>
-                    {status.connected && (
-                      <form action={backfillZohoAction}>
-                        <input type="hidden" name="brandId" value={activeBrand.id} />
-                        <button
-                          type="submit"
-                          className="rounded-md border border-border px-4 py-2 text-sm font-medium text-ink-strong hover:bg-surface-muted"
-                        >
-                          Sync existing records
-                        </button>
-                      </form>
-                    )}
+                  <div className="mt-4">
+                    <ZohoLivePanel
+                      brandId={activeBrand.id}
+                      connected={status.connected}
+                      connectHref={`/settings/zoho/connect?brandId=${activeBrand.id}`}
+                      initial={activity}
+                    />
                   </div>
-                  <p className="mt-3 text-xs text-ink-muted">
-                    {status.connected
-                      ? 'Sync existing records queues every customer, invoice and payment already in the database that has not been pushed yet — not just new ones going forward.'
-                      : "Connecting opens Zoho's own sign-in and consent screen — completing it needs your real Zoho account."}
-                  </p>
                 </div>
               )
             )}
