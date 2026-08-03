@@ -12,21 +12,21 @@ import { assessBrandColour } from './contrast.js';
 
 /** Product palette — fixed, not brand-controlled. */
 export const palette = {
-  // Surfaces, sage-tinted neutrals from the prototype.
-  canvas: '#EDF1EE',
+  // Surfaces, neutral gray — clean white cards on a barely-off-white page.
+  canvas: '#FAFAFA',
   surface: '#FFFFFF',
-  surfaceMuted: '#F5F7F5',
-  surfaceSunken: '#E7EBE8',
+  surfaceMuted: '#F5F5F6',
+  surfaceSunken: '#EEEEF0',
 
   // Lines.
-  border: '#D9E2DA',
-  borderStrong: '#A9B8AE',
+  border: '#E2E2E6',
+  borderStrong: '#C6C6CC',
 
   // Ink.
-  ink: '#132119',
-  inkStrong: '#16261F',
-  inkMuted: '#5B6B63',
-  inkSubtle: '#7C887F',
+  ink: '#1A1A1F',
+  inkStrong: '#0A0A0C',
+  inkMuted: '#6B7280',
+  inkSubtle: '#8C919B',
   inkInverse: '#FFFFFF',
 
   // Status. Also used for invoice state chips.
@@ -93,9 +93,9 @@ export const typography = {
 } as const;
 
 export const shadows = {
-  sm: '0 1px 2px rgba(19, 33, 25, 0.06)',
-  md: '0 2px 8px rgba(19, 33, 25, 0.08)',
-  lg: '0 8px 24px rgba(19, 33, 25, 0.12)',
+  sm: '0 1px 2px rgba(10, 10, 12, 0.06)',
+  md: '0 2px 8px rgba(10, 10, 12, 0.08)',
+  lg: '0 8px 24px rgba(10, 10, 12, 0.12)',
 } as const;
 
 /** Invoice status → palette tokens, so every surface renders a status alike. */

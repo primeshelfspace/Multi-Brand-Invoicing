@@ -1,19 +1,28 @@
+import { BrandTheme } from '@/components/brand-theme';
+import { LogoMark } from '@/components/logo-mark';
 import { BrandForm } from './brand-form';
 
 export const dynamic = 'force-dynamic';
 
+/** No brand exists to theme this page yet — near-black, same as every other
+ * brand-less screen (see FALLBACK_THEME_COLOUR elsewhere in this app). */
+const FALLBACK_THEME_COLOUR = '#0A0A0C';
+
 export default function NewBrandPage() {
   return (
-    <main className="mx-auto max-w-2xl px-6 py-12">
-      <header className="mb-8">
-        <p className="text-sm uppercase tracking-widest text-ink-subtle">Fenwick Holdings Inc.</p>
-        <h1 className="mt-1 text-2xl font-semibold text-ink-strong">Create a brand</h1>
-        <p className="mt-2 text-ink-muted">
-          Every customer, invoice and Zoho connection belongs to a brand — this is the first
-          thing to create.
-        </p>
-      </header>
-      <BrandForm />
-    </main>
+    <BrandTheme brandColour={FALLBACK_THEME_COLOUR}>
+      <main className="mx-auto max-w-xl px-6 py-16">
+        <header className="mb-8 text-center">
+          <LogoMark />
+          <h1 className="mt-6 text-3xl font-bold tracking-tight text-ink-strong">
+            Create your first brand
+          </h1>
+          <p className="mt-2 text-ink-muted">
+            Set up your brand profile to start creating professional invoices.
+          </p>
+        </header>
+        <BrandForm />
+      </main>
+    </BrandTheme>
   );
 }

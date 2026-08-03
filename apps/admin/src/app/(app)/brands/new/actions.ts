@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { ApiError, createBrand, type BrandFormInput } from '@/lib/api';
+import { ApiError, createBrand, type BrandFormInput, type CustomerAddress } from '@/lib/api';
 
 export interface CreateBrandState {
   readonly error?: string;
@@ -21,27 +21,44 @@ function describeApiError(error: ApiError): string {
   return error.message;
 }
 
+/** Null unless at least one field was actually filled in — an address object
+ * of all-nulls is not meaningfully different from no address at all, and
+ * schemas elsewhere already treat "no address" as null, not an empty shell. */
+function addressFromForm(formData: FormData, prefix: string): CustomerAddress | null {
+  const address: CustomerAddress = {
+    line1: emptyToNull(formData.get(`${prefix}Line1`)),
+    line2: emptyToNull(formData.get(`${prefix}Line2`)),
+    city: emptyToNull(formData.get(`${prefix}City`)),
+    region: emptyToNull(formData.get(`${prefix}Region`)),
+    postalCode: emptyToNull(formData.get(`${prefix}PostalCode`)),
+    country: emptyToNull(formData.get(`${prefix}Country`)),
+  };
+  return Object.values(address).some((v) => v !== null) ? address : null;
+}
+
 export async function createBrandAction(
   _prevState: CreateBrandState,
   formData: FormData,
 ): Promise<CreateBrandState> {
   const legalName = emptyToNull(formData.get('legalName'));
-  const displayName = emptyToNull(formData.get('displayName'));
   const invoicePrefix = emptyToNull(formData.get('invoicePrefix'));
 
   if (!legalName) return { error: 'Legal name is required.' };
-  if (!displayName) return { error: 'Display name is required.' };
   if (!invoicePrefix) return { error: 'Invoice prefix is required.' };
+
+  const mailingAddress = addressFromForm(formData, 'mailing');
 
   const input: BrandFormInput = {
     legalName,
-    displayName,
+    // Not a separate field on this simplified form — the legal name is what
+    // customers see until someone sets a different display name later.
+    displayName: legalName,
     salesPersonName: emptyToNull(formData.get('salesPersonName')),
     phone: emptyToNull(formData.get('phone')),
     email: emptyToNull(formData.get('email')),
-    mailingAddress: null,
-    billingAddress: null,
-    taxId: emptyToNull(formData.get('taxId')),
+    mailingAddress,
+    billingAddress: mailingAddress,
+    taxId: null,
     currency: emptyToNull(formData.get('currency')) ?? 'USD',
     timezone: emptyToNull(formData.get('timezone')) ?? 'America/New_York',
     themeColor: emptyToNull(formData.get('themeColor')) ?? '#2D6A6A',
