@@ -35,7 +35,7 @@ const envSchema = z
         message: 'CREDENTIAL_ENCRYPTION_KEY must be 32 bytes, base64 encoded',
       }),
 
-    PAYMENT_GATEWAY_DRIVER: z.enum(['fake', 'numbers']).default('fake'),
+    PAYMENT_GATEWAY_DRIVER: z.enum(['fake', 'numbers', 'stripe']).default('fake'),
     ACCOUNTING_DRIVER: z.enum(['fake', 'zoho']).default('fake'),
     MAIL_DRIVER: z.enum(['smtp', 'postmark', 'console']).default('console'),
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
@@ -57,6 +57,9 @@ const envSchema = z
     NUMBERS_API_BASE_URL: z.string().optional(),
     NUMBERS_API_KEY: z.string().optional(),
     NUMBERS_WEBHOOK_SECRET: z.string().optional(),
+
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
     ZOHO_CLIENT_ID: z.string().optional(),
     ZOHO_CLIENT_SECRET: z.string().optional(),
@@ -86,6 +89,10 @@ const envSchema = z
       require(env.NUMBERS_API_BASE_URL, 'NUMBERS_API_BASE_URL', 'when PAYMENT_GATEWAY_DRIVER=numbers');
       require(env.NUMBERS_API_KEY, 'NUMBERS_API_KEY', 'when PAYMENT_GATEWAY_DRIVER=numbers');
       require(env.NUMBERS_WEBHOOK_SECRET, 'NUMBERS_WEBHOOK_SECRET', 'when PAYMENT_GATEWAY_DRIVER=numbers');
+    }
+    if (env.PAYMENT_GATEWAY_DRIVER === 'stripe') {
+      require(env.STRIPE_SECRET_KEY, 'STRIPE_SECRET_KEY', 'when PAYMENT_GATEWAY_DRIVER=stripe');
+      require(env.STRIPE_WEBHOOK_SECRET, 'STRIPE_WEBHOOK_SECRET', 'when PAYMENT_GATEWAY_DRIVER=stripe');
     }
     if (env.ACCOUNTING_DRIVER === 'zoho') {
       require(env.ZOHO_CLIENT_ID, 'ZOHO_CLIENT_ID', 'when ACCOUNTING_DRIVER=zoho');

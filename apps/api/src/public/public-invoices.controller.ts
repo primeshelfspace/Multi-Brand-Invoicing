@@ -69,4 +69,15 @@ export class PublicInvoicesController {
     await this.payments.handleWebhook(request.rawBody, request.headers as Record<string, string>);
     return { received: true };
   }
+
+  @Post('webhooks/stripe')
+  @Public()
+  @HttpCode(200)
+  async stripeWebhook(@Req() request: RawBodyRequest<Request>): Promise<{ received: true }> {
+    if (!request.rawBody) {
+      throw new BadRequestException('missing request body');
+    }
+    await this.payments.handleWebhook(request.rawBody, request.headers as Record<string, string>);
+    return { received: true };
+  }
 }

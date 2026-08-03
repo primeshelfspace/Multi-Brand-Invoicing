@@ -60,7 +60,7 @@ export function MethodsForm({ brandId, initial }: { brandId: string; initial: Pa
         <Toggle
           name="cardEnabled"
           label="Credit & debit card"
-          hint="Routes through Numbers Gateway once connected (DEP-01) — FakeGateway locally."
+          hint="Processed by Stripe when PAYMENT_GATEWAY_DRIVER=stripe (real card charges, test mode with test keys); Numbers Gateway remains blocked pending DEP-01; FakeGateway is the local no-driver-set default."
           checked={settings.cardEnabled}
           onChange={(v) => set('cardEnabled', v)}
         />

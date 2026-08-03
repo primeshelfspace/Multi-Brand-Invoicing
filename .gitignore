@@ -18,6 +18,7 @@ pnpm-debug.log*
 
 # Local service state (used when Docker is unavailable)
 .local/
+dump.rdb
 # Anchored to the API's own runtime upload dir — an unanchored "storage/"
 # would also match apps/api/src/adapters/storage/, which is source code.
 apps/api/storage/

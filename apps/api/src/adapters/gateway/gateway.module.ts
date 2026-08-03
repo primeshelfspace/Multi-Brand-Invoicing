@@ -3,6 +3,7 @@ import { PAYMENT_GATEWAY_PORT } from '@fenwick/shared';
 import { ENV, type Env } from '../../config/env.js';
 import { FakeGatewayAdapter } from './fake-gateway.adapter.js';
 import { NumbersGatewayAdapter } from './numbers-gateway.adapter.js';
+import { StripeGatewayAdapter } from './stripe-gateway.adapter.js';
 
 /**
  * Composition point for PaymentGatewayPort. The driver is a configuration
@@ -12,11 +13,21 @@ import { NumbersGatewayAdapter } from './numbers-gateway.adapter.js';
   providers: [
     FakeGatewayAdapter,
     NumbersGatewayAdapter,
+    StripeGatewayAdapter,
     {
       provide: PAYMENT_GATEWAY_PORT,
-      inject: [ENV, FakeGatewayAdapter, NumbersGatewayAdapter],
-      useFactory: (env: Env, fake: FakeGatewayAdapter, numbers: NumbersGatewayAdapter) =>
-        env.PAYMENT_GATEWAY_DRIVER === 'numbers' ? numbers : fake,
+      inject: [ENV, FakeGatewayAdapter, NumbersGatewayAdapter, StripeGatewayAdapter],
+      useFactory: (
+        env: Env,
+        fake: FakeGatewayAdapter,
+        numbers: NumbersGatewayAdapter,
+        stripe: StripeGatewayAdapter,
+      ) =>
+        env.PAYMENT_GATEWAY_DRIVER === 'stripe'
+          ? stripe
+          : env.PAYMENT_GATEWAY_DRIVER === 'numbers'
+            ? numbers
+            : fake,
     },
   ],
   exports: [PAYMENT_GATEWAY_PORT, FakeGatewayAdapter],

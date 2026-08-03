@@ -88,14 +88,23 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async withScope<T>(scope: Scope, work: (tx: ScopedClient) => Promise<T>): Promise<T> {
     const settings = databaseScopeSettings(scope);
 
-    return this.$transaction(async (tx) => {
-      // set_config with is_local = true scopes the setting to this transaction,
-      // so a pooled connection cannot leak one request's scope into the next.
-      for (const [key, value] of Object.entries(settings)) {
-        await tx.$executeRaw`SELECT set_config(${key}, ${value}, true)`;
-      }
-      return work(tx as unknown as ScopedClient);
-    });
+    return this.$transaction(
+      async (tx) => {
+        // set_config with is_local = true scopes the setting to this transaction,
+        // so a pooled connection cannot leak one request's scope into the next.
+        for (const [key, value] of Object.entries(settings)) {
+          await tx.$executeRaw`SELECT set_config(${key}, ${value}, true)`;
+        }
+        return work(tx as unknown as ScopedClient);
+      },
+      // Prisma's own interactive-transaction options default to maxWait: 2s
+      // (time allowed just to acquire a pooled connection and start) and
+      // timeout: 5s (time allowed for the transaction body to run) — both
+      // separate from connect_timeout/pool_timeout on DATABASE_URL. This
+      // Neon compute's per-query latency can exceed either default; 30s
+      // matches the headroom already given to connection setup elsewhere.
+      { maxWait: 30_000, timeout: 30_000 },
+    );
   }
 
   /**

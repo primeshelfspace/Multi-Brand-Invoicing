@@ -42,11 +42,17 @@ function parseValue(raw) {
   return comment === -1 ? value : value.slice(0, comment).trim();
 }
 
-const [command, ...args] = process.argv.slice(2);
+/** Expands bash-style ${VAR:-default} tokens, since Windows shells don't. */
+function expandDefault(arg) {
+  return arg.replace(/\$\{([A-Z_][A-Z0-9_]*):-([^}]*)\}/g, (_, name, fallback) => process.env[name] ?? fallback);
+}
+
+const [command, ...rawArgs] = process.argv.slice(2);
 if (!command) {
   process.stderr.write('usage: with-env.mjs <command> [args...]\n');
   process.exit(1);
 }
+const args = rawArgs.map(expandDefault);
 
 const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32' });
 child.on('exit', (code, signal) => process.exit(signal ? 1 : (code ?? 0)));

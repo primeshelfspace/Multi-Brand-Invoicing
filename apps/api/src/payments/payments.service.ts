@@ -21,6 +21,10 @@ export interface PaymentAttemptResult {
   readonly gatewayStatus: PaymentIntentStatus;
   readonly invoiceStatus: InvoiceStatus;
   readonly declineReason: string | null;
+  /** Stripe's client_secret (or another gateway's hosted-field token) — present
+   * only while the client still has to complete the payment itself, i.e.
+   * REQUIRES_ACTION. Never populated for a synchronous fake-gateway result. */
+  readonly clientToken: string | null;
 }
 
 /**
@@ -90,6 +94,10 @@ export class PaymentsService {
             gatewayStatus: this.paymentStatusToIntentStatus(existing.status),
             invoiceStatus: invoice.status,
             declineReason: existing.declineReason,
+            // A retry of an already-recorded attempt does not re-fetch the
+            // gateway's client secret; the client should not have gotten here
+            // without already holding the one from the original attempt.
+            clientToken: null,
           },
           sync: null,
         };
@@ -175,6 +183,10 @@ export class PaymentsService {
           gatewayStatus: gatewayResult.status,
           invoiceStatus: finalInvoice.status,
           declineReason: gatewayResult.declineReason ?? null,
+          // Only meaningful while the client still has work to do (Stripe's
+          // client_secret for REQUIRES_ACTION); a terminal status has nothing
+          // left for the client to confirm.
+          clientToken: gatewayResult.status === 'REQUIRES_ACTION' ? (gatewayResult.clientToken ?? null) : null,
         },
         sync: gatewayResult.status === 'SUCCEEDED' ? { brandId: invoice.brandId, paymentId: payment.id } : null,
       };
@@ -213,6 +225,16 @@ export class PaymentsService {
     );
     if (!payment) {
       this.logger.warn(`webhook for unknown gateway reference ${event.gatewayReference}`);
+      return;
+    }
+
+    // A gateway sends more event types than this platform models (e.g.
+    // Stripe's charge.succeeded / charge.updated alongside payment_intent.*).
+    // UNKNOWN must be a no-op, not "still processing" — treating it as
+    // PROCESSING would regress an already-SETTLED payment's status the
+    // moment one of these arrives after the event that actually settled it.
+    if (event.type === 'UNKNOWN') {
+      this.logger.debug(`ignoring unmodelled webhook event for payment ${payment.id}`);
       return;
     }
 

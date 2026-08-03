@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { formatMinorForDisplay } from '@fenwick/shared/money';
 import type { PublicInvoice } from '@/lib/invoice';
+import { StripeCardForm } from './stripe-card-form';
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
 
@@ -10,8 +11,8 @@ type Method = 'CARD' | 'WALLET' | 'ACH';
 
 type Step =
   | { kind: 'select' }
-  | { kind: 'card-details' }
   | { kind: 'processing' }
+  | { kind: 'card-confirm'; clientSecret: string }
   | { kind: 'success' }
   | { kind: 'pending' }
   | { kind: 'failure'; reason: string | null }
@@ -23,38 +24,45 @@ type Step =
  * the same list server-side regardless of what renders here.
  *
  * Apple Pay and Google Pay both call the API as WALLET (one PaymentMethod
- * value covers both at the domain level) and, like the card form below, are
- * illustrative: real wallet buttons need the Apple Pay JS / Google Pay JS
- * SDKs, domain verification with Apple, and a registered Google Pay merchant
- * ID — none of which exist yet, independent of Numbers Gateway (DEP-01).
+ * value covers both at the domain level). CARD now goes through a real
+ * Stripe PaymentIntent; a WALLET button still resolves through the same
+ * card-fee-bearing Stripe flow, but an actual Apple Pay / Google Pay sheet
+ * needs domain verification with Apple and a registered Google Pay merchant
+ * ID, neither of which exist yet.
  */
-function availableMethods(invoice: PublicInvoice): Array<{ key: Method; label: string }> {
-  const methods: Array<{ key: Method; label: string }> = [];
-  if (invoice.enabledMethods.card) methods.push({ key: 'CARD', label: 'Credit or debit card' });
-  if (invoice.enabledMethods.applePay) methods.push({ key: 'WALLET', label: 'Apple Pay' });
+/** CARD and WALLET carry the card fee (TDD-001 §9.2); ACH never does. */
+function quotedTotalFor(invoice: PublicInvoice, method: Method): number {
+  if (method === 'ACH') return invoice.balanceMinor;
+  const preFee = invoice.subtotalMinor + invoice.taxMinor;
+  return preFee + Math.round(preFee * (invoice.cardFeeRateBp / 10_000));
+}
+
+function availableMethods(
+  invoice: PublicInvoice,
+): Array<{ key: Method; label: string; quotedTotalMinor: number }> {
+  const methods: Array<{ key: Method; label: string; quotedTotalMinor: number }> = [];
+  if (invoice.enabledMethods.card) {
+    methods.push({ key: 'CARD', label: 'Credit or debit card', quotedTotalMinor: quotedTotalFor(invoice, 'CARD') });
+  }
+  if (invoice.enabledMethods.applePay) {
+    methods.push({ key: 'WALLET', label: 'Apple Pay', quotedTotalMinor: quotedTotalFor(invoice, 'WALLET') });
+  }
   if (invoice.enabledMethods.googlePay && !invoice.enabledMethods.applePay) {
     // Only one WALLET button is meaningful — Apple Pay's label wins if both
     // are on, since the API cannot distinguish which wallet was actually used.
-    methods.push({ key: 'WALLET', label: 'Google Pay' });
+    methods.push({ key: 'WALLET', label: 'Google Pay', quotedTotalMinor: quotedTotalFor(invoice, 'WALLET') });
   }
-  if (invoice.enabledMethods.ach) methods.push({ key: 'ACH', label: 'Bank transfer (ACH)' });
+  if (invoice.enabledMethods.ach) {
+    methods.push({ key: 'ACH', label: 'Bank transfer (ACH)', quotedTotalMinor: quotedTotalFor(invoice, 'ACH') });
+  }
   return methods;
 }
 
 export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token: string }) {
   const [step, setStep] = useState<Step>({ kind: 'select' });
-  const [method, setMethod] = useState<Method | null>(null);
   const methods = availableMethods(invoice);
 
-  const feeApplies = method === 'CARD' || method === 'WALLET';
-  const quotedTotal = feeApplies
-    ? invoice.subtotalMinor + invoice.taxMinor + Math.round(
-        (invoice.subtotalMinor + invoice.taxMinor) * (invoice.cardFeeRateBp / 10_000),
-      )
-    : invoice.balanceMinor;
-
   async function submitPayment(chosenMethod: Method) {
-    setMethod(chosenMethod);
     setStep({ kind: 'processing' });
     try {
       const response = await fetch(`${API_URL}/public/invoices/${token}/payment-intents`, {
@@ -71,6 +79,7 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
       const body = (await response.json()) as {
         gatewayStatus?: string;
         declineReason?: string | null;
+        clientToken?: string | null;
         message?: string;
       };
       if (!response.ok) {
@@ -80,6 +89,10 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
       if (body.gatewayStatus === 'SUCCEEDED') setStep({ kind: 'success' });
       else if (body.gatewayStatus === 'FAILED') {
         setStep({ kind: 'failure', reason: body.declineReason ?? null });
+      } else if (body.gatewayStatus === 'REQUIRES_ACTION' && body.clientToken) {
+        // Stripe (or another hosted-field gateway) needs the customer to
+        // complete the payment client-side before anything is settled.
+        setStep({ kind: 'card-confirm', clientSecret: body.clientToken });
       } else setStep({ kind: 'pending' });
     } catch (error) {
       setStep({
@@ -149,50 +162,15 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
     );
   }
 
-  if (step.kind === 'card-details') {
+  if (step.kind === 'card-confirm') {
     return (
-      <div className="mt-6">
-        {/* Illustrative only — nothing entered here is sent anywhere.
-            FakeGateway resolves purely from the amount (TDD-001 §10.1), and
-            Numbers Gateway's hosted-field question (DEP-01) is unresolved,
-            so this cannot be a real capture form yet. */}
-        <p className="mb-3 text-xs text-ink-subtle">
-          Demo only — no card details are transmitted or stored.
-        </p>
-        <div className="space-y-3">
-          <input
-            disabled
-            placeholder="Card number"
-            className="w-full rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-ink-subtle"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              disabled
-              placeholder="MM / YY"
-              className="w-full rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-ink-subtle"
-            />
-            <input
-              disabled
-              placeholder="CVC"
-              className="w-full rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-ink-subtle"
-            />
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => submitPayment('CARD')}
-          className="mt-4 w-full rounded-md bg-brand px-4 py-2.5 text-sm font-medium text-brand-foreground"
-        >
-          Pay {formatMinorForDisplay(quotedTotal, invoice.currency as 'USD')}
-        </button>
-        <button
-          type="button"
-          onClick={() => setStep({ kind: 'select' })}
-          className="mt-2 w-full text-center text-xs text-ink-muted"
-        >
-          Back
-        </button>
-      </div>
+      <StripeCardForm
+        clientSecret={step.clientSecret}
+        returnUrl={typeof window !== 'undefined' ? window.location.href : ''}
+        onSucceeded={() => setStep({ kind: 'success' })}
+        onFailed={(reason) => setStep({ kind: 'failure', reason })}
+        onCancel={() => setStep({ kind: 'select' })}
+      />
     );
   }
 
@@ -210,10 +188,13 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
         <button
           key={m.key}
           type="button"
-          onClick={() => (m.key === 'CARD' ? setStep({ kind: 'card-details' }) : submitPayment(m.key))}
-          className="w-full rounded-md border border-border bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-strong hover:bg-surface-muted"
+          onClick={() => submitPayment(m.key)}
+          className="flex w-full items-center justify-between rounded-md border border-border bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-strong hover:bg-surface-muted"
         >
-          {m.label}
+          <span>{m.label}</span>
+          <span className="text-ink-muted">
+            {formatMinorForDisplay(m.quotedTotalMinor, invoice.currency as 'USD')}
+          </span>
         </button>
       ))}
     </div>
