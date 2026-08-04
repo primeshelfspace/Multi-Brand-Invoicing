@@ -1,6 +1,23 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Brand } from '@prisma/client';
-import { brandSchema, brandSettingsSchema, type Scope } from '@fenwick/shared';
+import {
+  brandObjectSchema,
+  brandSettingsSchema,
+  idSchema,
+  TAX_ID_FORMAT_MESSAGE,
+  taxIdMatchesCountry,
+  type Scope,
+} from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import { BrandsService, type CreateBrandInput } from './brands.service.js';
@@ -13,9 +30,9 @@ import { BrandsService, type CreateBrandInput } from './brands.service.js';
  * that is a distinct permission from "list every brand in the organisation"
  * and deserves its own resource/decision, not a quiet loosening of BRANDS.
  */
-const createBrandSchema = brandSchema.extend({
-  invoicePrefix: brandSettingsSchema.shape.invoicePrefix,
-});
+const createBrandSchema = brandObjectSchema
+  .extend({ invoicePrefix: brandSettingsSchema.shape.invoicePrefix })
+  .refine(taxIdMatchesCountry, { message: TAX_ID_FORMAT_MESSAGE, path: ['taxId'] });
 
 @Controller('brands')
 export class BrandsController {
@@ -34,5 +51,21 @@ export class BrandsController {
     @Body(zodPipe(createBrandSchema)) body: CreateBrandInput,
   ): Promise<Brand> {
     return this.brands.create(scope, body);
+  }
+
+  @Post(':brandId/logo')
+  @RequirePermission('BRAND_CONFIGURATION', 'WRITE')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  uploadLogo(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<{ logoUrl: string }> {
+    if (!file) throw new BadRequestException('no file uploaded');
+    return this.brands.setLogo(scope, brandId, {
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
   }
 }

@@ -127,7 +127,7 @@ export default async function DashboardPage({
           <div className="rounded-lg border border-border bg-surface p-8 text-center">
             <p className="text-sm text-ink-muted">No brands exist yet.</p>
             <Link
-              href="/brands/new"
+              href="/brands/structure"
               className="mt-4 inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground"
             >
               Create your first brand

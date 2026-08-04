@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ROLES } from '../domain/roles.js';
+import { BUSINESS_TYPES } from '../domain/business-type.js';
 import { INVOICE_STATUSES } from '../domain/invoice-status.js';
 import { PAYMENT_METHODS } from '../money/calculation.js';
 import {
@@ -35,11 +36,37 @@ export const passwordSchema = z
   .min(12, 'use at least 12 characters')
   .max(200, 'passwords are capped at 200 characters');
 
+/** FR-AUTH-007/FR-AUTH-021: setting a password, whether a first-login forced
+ * reset off a temporary one or a voluntary change later — same rule either
+ * way, since a password set under duress is not allowed to be weaker than one
+ * set by choice. */
+export const setPasswordSchema = z.object({
+  newPassword: passwordSchema,
+});
+export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
+
 // --- Brand -----------------------------------------------------------------
 
-export const brandSchema = z.object({
+export const businessTypeSchema = z.enum(BUSINESS_TYPES);
+
+/** US EIN: two digits, a hyphen, seven digits — e.g. 12-3456789. */
+const EIN_PATTERN = /^\d{2}-\d{7}$/;
+export const TAX_ID_FORMAT_MESSAGE = 'a US Tax ID must be an EIN in the form 12-3456789';
+
+/** Exported so createBrandSchema (API controller, adds invoicePrefix) can
+ * apply the identical check after extending the object — a schema produced
+ * by `.refine()` has no `.extend()` of its own to build on. */
+export function taxIdMatchesCountry(v: {
+  readonly mailingAddress: { readonly country: string | null } | null;
+  readonly taxId: string | null;
+}): boolean {
+  return v.mailingAddress?.country !== 'US' || !v.taxId || EIN_PATTERN.test(v.taxId);
+}
+
+export const brandObjectSchema = z.object({
   legalName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().min(1).max(120),
+  businessType: businessTypeSchema,
   salesPersonName: z.string().trim().max(160).nullable(),
   phone: phoneSchema.nullable(),
   email: emailSchema.nullable(),
@@ -50,7 +77,40 @@ export const brandSchema = z.object({
   timezone: timezoneSchema,
   themeColor: hexColourSchema,
 });
-export type BrandInput = z.infer<typeof brandSchema>;
+
+// --- Onboarding (FR-ONB) -----------------------------------------------------
+
+/** Staged on Merchant before any Brand exists — same fields as brandObjectSchema
+ * minus the settings a Brand needs but a company doesn't have yet (currency,
+ * timezone, invoice prefix, theme colour, display name). */
+export const companyDetailsObjectSchema = z.object({
+  legalName: z.string().trim().min(1).max(200),
+  businessType: businessTypeSchema,
+  phone: phoneSchema.nullable(),
+  email: emailSchema.nullable(),
+  mailingAddress: addressSchema.nullable(),
+  billingAddress: addressSchema.nullable(),
+  taxId: z.string().trim().max(64).nullable(),
+});
+export const companyDetailsSchema = companyDetailsObjectSchema.refine(taxIdMatchesCountry, {
+  message: TAX_ID_FORMAT_MESSAGE,
+  path: ['taxId'],
+});
+export type CompanyDetailsInput = z.infer<typeof companyDetailsObjectSchema>;
+
+export const BRAND_STRUCTURES = ['SINGLE', 'MULTI'] as const;
+export type BrandStructure = (typeof BRAND_STRUCTURES)[number];
+
+export const brandStructureChoiceSchema = z.object({
+  structure: z.enum(BRAND_STRUCTURES),
+});
+export type BrandStructureChoiceInput = z.infer<typeof brandStructureChoiceSchema>;
+
+export const brandSchema = brandObjectSchema.refine(taxIdMatchesCountry, {
+  message: TAX_ID_FORMAT_MESSAGE,
+  path: ['taxId'],
+});
+export type BrandInput = z.infer<typeof brandObjectSchema>;
 
 export const brandSettingsSchema = z.object({
   invoicePrefix: z

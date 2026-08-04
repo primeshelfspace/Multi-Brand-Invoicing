@@ -1,57 +1,120 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useId, useState } from 'react';
 import { loginAction, type LoginState } from './actions';
 
 const initialState: LoginState = {};
 
-/**
- * Monochrome by design: this page is rendered before a brand is known, so there
- * is no brand colour to theme it with. Deliberately plain black and white rather
- * than the sage product palette the authenticated app uses.
- */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const inputClass =
-  'w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-md text-black ' +
-  'placeholder:text-neutral-400 focus:border-black focus-visible:outline-none ' +
-  'focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-1';
+  'w-full rounded-[10px] border bg-white px-4 py-3.5 text-base text-slate-900 ' +
+  'placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 ' +
+  'focus-visible:ring-offset-1 transition-colors';
+const validBorder = 'border-[#D1D5DB] focus:border-slate-900 focus-visible:ring-slate-900';
+const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
+const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
+
+interface FieldErrors {
+  email?: string;
+  password?: string;
+}
 
 export function LoginForm({ returnTo }: { returnTo: string }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const emailId = useId();
+  const passwordId = useId();
+  const emailErrorId = useId();
+  const passwordErrorId = useId();
+
+  function validate(formData: FormData): FieldErrors {
+    const email = String(formData.get('email') ?? '').trim();
+    const password = String(formData.get('password') ?? '');
+    const errors: FieldErrors = {};
+
+    if (!email) errors.email = 'Email address is required.';
+    else if (!EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address.';
+
+    if (!password) errors.password = 'Temporary password is required.';
+
+    return errors;
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const errors = validate(new FormData(event.currentTarget));
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      event.preventDefault();
+    }
+  }
 
   return (
-    <form action={formAction} className="space-y-5" noValidate>
+    <form action={formAction} onSubmit={handleSubmit} noValidate className="space-y-5">
       <input type="hidden" name="next" value={returnTo} />
 
-      <label className="block">
-        <span className="mb-1.5 block text-sm font-medium text-neutral-700">Email address</span>
+      <label className="block" htmlFor={emailId}>
+        <span className={labelClass}>Email Address</span>
         <input
+          id={emailId}
           name="email"
           type="email"
           autoComplete="username"
           autoFocus
           required
           defaultValue={state.email ?? ''}
-          className={inputClass}
-          placeholder="you@company.com"
+          aria-invalid={Boolean(fieldErrors.email)}
+          aria-describedby={fieldErrors.email ? emailErrorId : undefined}
+          className={`${inputClass} ${fieldErrors.email ? invalidBorder : validBorder}`}
+          placeholder="Enter email address"
         />
+        {fieldErrors.email && (
+          <p id={emailErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
+            {fieldErrors.email}
+          </p>
+        )}
       </label>
 
-      <label className="block">
-        <span className="mb-1.5 block text-sm font-medium text-neutral-700">Password</span>
+      <label className="block" htmlFor={passwordId}>
+        <span className={labelClass}>Temporary Password</span>
         <input
+          id={passwordId}
           name="password"
           type="password"
           autoComplete="current-password"
           required
-          className={inputClass}
+          aria-invalid={Boolean(fieldErrors.password)}
+          aria-describedby={fieldErrors.password ? passwordErrorId : undefined}
+          className={`${inputClass} ${fieldErrors.password ? invalidBorder : validBorder}`}
+          placeholder="Enter temporary password"
         />
+        {fieldErrors.password && (
+          <p id={passwordErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
+            {fieldErrors.password}
+          </p>
+        )}
       </label>
 
-      {/* role="alert" so the failure is announced, not only shown (NFR-USE). */}
+      <div className="flex items-start gap-2.5 rounded-[10px] bg-[#E8EFFE] px-4 py-3.5">
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          className="mt-0.5 h-5 w-5 shrink-0 text-[#3B5BDB]"
+          aria-hidden
+        >
+          <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10 9v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="10" cy="6.5" r="0.9" fill="currentColor" />
+        </svg>
+        <p className="text-sm text-[#3B5BDB]">
+          You&rsquo;ll be required to reset your password after logging in.
+        </p>
+      </div>
+
       {state.error && (
         <p
           role="alert"
-          className="rounded-md border border-neutral-300 bg-neutral-100 px-3 py-2.5 text-sm text-black"
+          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
         >
           {state.error}
         </p>
@@ -60,12 +123,12 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-md bg-black px-4 py-2.5 text-md font-medium text-white
-                   transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400
+        className="w-full rounded-[10px] bg-black px-4 py-3.5 text-base font-bold text-white
+                   transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400
                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black
                    focus-visible:ring-offset-2"
       >
-        {pending ? 'Signing in…' : 'Sign in'}
+        {pending ? 'Signing in…' : 'Continue'}
       </button>
     </form>
   );

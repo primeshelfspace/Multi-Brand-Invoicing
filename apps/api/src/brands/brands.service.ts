@@ -1,12 +1,28 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Brand } from '@prisma/client';
-import type { BrandInput, Scope } from '@fenwick/shared';
-import { isPublicScope } from '@fenwick/shared';
+import type { BrandInput, Scope, StoragePort } from '@fenwick/shared';
+import { isPublicScope, storageKeys, STORAGE_PORT } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 export interface CreateBrandInput extends BrandInput {
   readonly invoicePrefix: string;
 }
+
+export interface LogoUpload {
+  readonly buffer: Buffer;
+  readonly mimetype: string;
+  readonly size: number;
+}
+
+const MAX_LOGO_BYTES = 5 * 1024 * 1024;
+
+const LOGO_EXTENSION_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/svg+xml': 'svg',
+};
+
+const LOGO_URL_TTL_SECONDS = 3600;
 
 /**
  * List is gated on BRANDS READ (FRS-001 §3.3: Owner and Merchant Admin only)
@@ -21,7 +37,10 @@ export interface CreateBrandInput extends BrandInput {
  */
 @Injectable()
 export class BrandsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+  ) {}
 
   list(scope: Scope): Promise<Brand[]> {
     return this.prisma.withScope(scope, (tx) =>
@@ -44,6 +63,7 @@ export class BrandsService {
           merchantId: scope.merchantId,
           legalName: brandFields.legalName,
           displayName: brandFields.displayName,
+          businessType: brandFields.businessType,
           salesPerson: brandFields.salesPersonName,
           phone: brandFields.phone,
           email: brandFields.email,
@@ -57,5 +77,37 @@ export class BrandsService {
         },
       }),
     );
+  }
+
+  /**
+   * Uploaded outside any DB transaction on purpose: `put` is a network call
+   * to S3 (or local disk), and `withScope` holds a real Postgres transaction
+   * open for its whole callback — nothing external belongs inside that.
+   */
+  async setLogo(scope: Scope, brandId: string, file: LogoUpload): Promise<{ logoUrl: string }> {
+    const extension = LOGO_EXTENSION_BY_MIME[file.mimetype];
+    if (!extension) {
+      throw new BadRequestException('logo must be a JPG, PNG, or SVG image');
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      throw new BadRequestException('logo must be 5MB or smaller');
+    }
+
+    const existing = await this.prisma.withScope(scope, (tx) =>
+      tx.brand.findUnique({ where: { id: brandId } }),
+    );
+    if (!existing) throw new NotFoundException('brand not found');
+
+    const key = storageKeys.brandLogo(brandId, `logo.${extension}`);
+    await this.storage.put({ key, body: file.buffer, contentType: file.mimetype, encrypt: true });
+
+    await this.prisma.withScope(scope, (tx) =>
+      tx.brand.update({ where: { id: brandId }, data: { logoKey: key } }),
+    );
+
+    const logoUrl = await this.storage.getSignedUrl(key, {
+      expiresInSeconds: LOGO_URL_TTL_SECONDS,
+    });
+    return { logoUrl };
   }
 }

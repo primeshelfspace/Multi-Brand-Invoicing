@@ -60,6 +60,11 @@ export const storageKeys = {
   receiptPdf: (brandId: string, paymentId: string): string =>
     `brands/${brandId}/receipts/${paymentId}.pdf`,
   brandLogo: (brandId: string, filename: string): string => `brands/${brandId}/logo/${filename}`,
+  /** Staged on Merchant during onboarding, before any Brand exists to own a
+   * logo of its own — copied into the first Brand's logoKey on SINGLE
+   * brand-structure, same as the rest of the staged company details. */
+  merchantLogo: (merchantId: string, filename: string): string =>
+    `merchants/${merchantId}/logo/${filename}`,
   checkImage: (brandId: string, submissionId: string, side: 'front' | 'back'): string =>
     `brands/${brandId}/checks/${submissionId}-${side}`,
   invoiceAttachment: (brandId: string, invoiceId: string, filename: string): string =>

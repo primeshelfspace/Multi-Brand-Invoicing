@@ -25,6 +25,7 @@ const LOCKOUT_MINUTES = 30;
 /** The audit `action` for a sign-in attempt, successful or not. */
 export const AUDIT_LOGIN = 'AUTH_LOGIN';
 export const AUDIT_LOGOUT = 'AUTH_LOGOUT';
+export const AUDIT_PASSWORD_SET = 'AUTH_PASSWORD_SET';
 
 export interface LoginAttempt {
   readonly email: string;
@@ -39,6 +40,11 @@ export interface AuthenticatedUser {
   readonly email: string;
   readonly name: string;
   readonly role: Role;
+  /** True for a user who has never signed in with a password of their own
+   * choosing — an INVITED account signing in for the first time with the
+   * temporary password whoever created it set. The client's only obligation
+   * on seeing this is to send them to set a real one before anything else. */
+  readonly mustResetPassword: boolean;
 }
 
 export interface LoginResult {
@@ -125,9 +131,13 @@ export class AuthService {
       throw new UnauthorizedException(GENERIC_FAILURE);
     }
 
-    // INVITED users have not accepted yet; SUSPENDED ones have been switched
-    // off. Neither may hold a session, and neither is told which they are.
-    if (row.status !== 'ACTIVE') {
+    // SUSPENDED has been switched off and may not hold a session, and is not
+    // told that is why (FR-AUTH-003). INVITED is different on purpose: the
+    // temporary password an owner/admin set *is* this account's password
+    // until setPassword replaces it, so it signs in like any other — the
+    // mustResetPassword flag below is what stops it going anywhere else
+    // first, not a rejection here.
+    if (row.status === 'SUSPENDED') {
       await this.record(row.merchantId, row.id, 'FAILURE', `STATUS_${row.status}`, context);
       throw new UnauthorizedException(GENERIC_FAILURE);
     }
@@ -154,6 +164,7 @@ export class AuthService {
         email: row.email,
         name: row.name,
         role: row.role,
+        mustResetPassword: row.status === 'INVITED',
       },
     };
   }
@@ -167,10 +178,40 @@ export class AuthService {
     const row = await this.prisma.withScope(scope, (tx) =>
       tx.user.findUnique({
         where: { id: scope.userId },
-        select: { id: true, merchantId: true, email: true, name: true, role: true },
+        select: { id: true, merchantId: true, email: true, name: true, role: true, status: true },
       }),
     );
-    return row;
+    if (!row) return null;
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      mustResetPassword: row.status === 'INVITED',
+    };
+  }
+
+  /**
+   * FR-AUTH-007/021: the one path that ever changes passwordHash, whether
+   * this is a first-login forced reset off a temporary one (row.status is
+   * still INVITED, and this is what clears it — see login above) or a
+   * voluntary change later (already ACTIVE, and stays that way). Does not
+   * ask for the current password: the caller already holds a live session,
+   * which is its own proof of who they are for this one action.
+   */
+  async setPassword(scope: RequestScope, newPassword: string): Promise<void> {
+    const passwordHash = await hashPassword(newPassword);
+    await this.prisma.withScope(scope, (tx) =>
+      tx.user.update({
+        where: { id: scope.userId },
+        data: { passwordHash, status: 'ACTIVE' },
+      }),
+    );
+    await this.record(scope.merchantId, scope.userId, 'SUCCESS', null, {
+      sourceIp: scope.sourceIp,
+      userAgent: null,
+    }, AUDIT_PASSWORD_SET);
   }
 
   /** FR-AUTH-010: sign-out terminates the session server-side, not just in the browser. */

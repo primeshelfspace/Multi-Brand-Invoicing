@@ -31,29 +31,27 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-6 py-12">
-      <div className="w-full max-w-sm">
+    <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
+      <div className="mx-auto w-full max-w-[600px]">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Fenwick Invoicing</h1>
-          <p className="mt-1.5 text-sm text-neutral-400">Sign in to continue.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
+            Welcome Back
+          </h1>
+          <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
+            Sign in with the temporary password provided to you.
+          </p>
         </div>
 
-        <div className="rounded-xl bg-white p-8 shadow-lg">
-          {params.expired && (
-            <p
-              role="status"
-              className="mb-5 rounded-md border border-neutral-300 bg-neutral-100 px-3 py-2.5 text-sm text-black"
-            >
-              Your session ended. Sign in again to continue.
-            </p>
-          )}
+        {params.expired && (
+          <p
+            role="status"
+            className="mb-5 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            Your session ended. Sign in again to continue.
+          </p>
+        )}
 
-          <LoginForm returnTo={returnTo} />
-        </div>
-
-        <p className="mt-6 text-center text-xs text-neutral-500">
-          Fenwick Holdings Inc. — authorised users only.
-        </p>
+        <LoginForm returnTo={returnTo} />
       </div>
     </main>
   );

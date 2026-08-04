@@ -51,6 +51,23 @@ enum BrandStatus {
   ARCHIVED
 }
 
+/// FR-BRD onboarding: legal structure of the business behind a brand.
+enum BusinessType {
+  SOLE_PROPRIETORSHIP
+  LLC
+  CORPORATION
+  PARTNERSHIP
+  NONPROFIT
+}
+
+/// FR-ONB: whether a merchant operates one brand or several. Chosen once,
+/// right after company details — SINGLE auto-creates the one brand from
+/// those details; MULTI hands off to brand-by-brand setup instead.
+enum BrandStructure {
+  SINGLE
+  MULTI
+}
+
 enum CustomerType {
   BUSINESS
   INDIVIDUAL
@@ -145,6 +162,27 @@ model Merchant {
   address      Json?
   plan         String         @default("standard")
   status       MerchantStatus @default(ACTIVE)
+
+  /// Onboarding, FR-ONB. Staged company details, collected once before any
+  /// Brand exists and copied from here into the first Brand — see
+  /// MerchantService.setCompanyDetails / chooseBrandStructure. Everything
+  /// up to and including brandStructure is derived, never stored as its own
+  /// step, so it can never drift out of sync with what actually happened.
+  /// onboardingComplete is the one fact that genuinely cannot be derived —
+  /// SINGLE sets it the instant its one brand is created, but a MULTI
+  /// merchant decides for itself when it is done adding brands, which
+  /// nothing in the data implies on its own.
+  companyLegalName     String?          @map("company_legal_name")
+  companyBusinessType  BusinessType?    @map("company_business_type")
+  companyPhone         String?          @map("company_phone")
+  companyEmail         String?          @map("company_email")
+  companyMailingAddress Json?           @map("company_mailing_address")
+  companyBillingAddress Json?           @map("company_billing_address")
+  companyTaxId         String?          @map("company_tax_id")
+  companyLogoKey       String?          @map("company_logo_key")
+  brandStructure       BrandStructure?  @map("brand_structure")
+  onboardingComplete   Boolean          @default(false) @map("onboarding_complete")
+
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
@@ -220,14 +258,15 @@ model Session {
 model Brand {
   id             String      @id @default(uuid()) @db.Uuid
   merchantId     String      @map("merchant_id") @db.Uuid
-  legalName      String      @map("legal_name")
-  displayName    String      @map("display_name")
-  salesPerson    String?     @map("sales_person")
+  legalName      String        @map("legal_name")
+  displayName    String        @map("display_name")
+  salesPerson    String?       @map("sales_person")
+  businessType   BusinessType? @map("business_type")
   phone          String?
   email          String?
-  mailingAddress Json?       @map("mailing_address")
-  billingAddress Json?       @map("billing_address")
-  taxId          String?     @map("tax_id")
+  mailingAddress Json?         @map("mailing_address")
+  billingAddress Json?         @map("billing_address")
+  taxId          String?       @map("tax_id")
   currency       String      @default("USD")
   timezone       String      @default("America/New_York")
   themeColor     String      @default("#2D6A6A") @map("theme_color")

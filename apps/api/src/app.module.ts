@@ -12,6 +12,7 @@ import { HealthModule } from './health/health.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { InvoicesModule } from './invoices/invoices.module.js';
 import { PrismaModule } from './infra/prisma/prisma.module.js';
+import { MerchantModule } from './merchant/merchant.module.js';
 import { QueueModule } from './infra/queue/queue.module.js';
 import { RedisModule } from './infra/redis/redis.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
@@ -44,6 +45,7 @@ import { TenancyModule } from './tenancy/tenancy.module.js';
     HealthModule,
     AuthModule,
     BrandsModule,
+    MerchantModule,
     CustomersModule,
     InvoicesModule,
     PaymentsModule,

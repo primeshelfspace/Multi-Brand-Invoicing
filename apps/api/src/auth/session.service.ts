@@ -73,7 +73,10 @@ export class SessionService {
     if (!row) return null;
     if (row.revoked_at) return null;
     if (new Date(row.expires_at).getTime() <= Date.now()) return null;
-    if (row.status !== 'ACTIVE') return null;
+    // SUSPENDED may not hold a session at all. INVITED is allowed through: it
+    // is how a session issued to a first-login, mustResetPassword user is able
+    // to reach /auth/set-password in the first place — see AuthService.login.
+    if (row.status === 'SUSPENDED') return null;
 
     return {
       merchantId: row.merchant_id,

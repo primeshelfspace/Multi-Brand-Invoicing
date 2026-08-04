@@ -1,6 +1,7 @@
 import { Controller, Get, Inject, NotFoundException, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ENV, type Env } from '../../config/env.js';
+import { Public } from '../../tenancy/authorisation.js';
 import { LocalDiskAdapter } from './local-disk.adapter.js';
 
 /**
@@ -9,6 +10,12 @@ import { LocalDiskAdapter } from './local-disk.adapter.js';
  * In deployed environments STORAGE_DRIVER is s3, signed URLs point at S3, and
  * this route refuses everything — documents are never served through the
  * application tier (TDD-001 §13).
+ *
+ * @Public() is deliberate, not an oversight: a signed URL exists precisely so
+ * a plain `<img src>` or a redirect can fetch it with no Authorization header
+ * to attach. The HMAC signature + expiry (verified below) is the access
+ * control here, the same way a public invoice token is elsewhere — requiring
+ * a session on top would defeat the point of handing out a signed URL at all.
  */
 @Controller('storage')
 export class StorageController {
@@ -18,6 +25,7 @@ export class StorageController {
   ) {}
 
   @Get('local')
+  @Public()
   async serve(
     @Query('key') key: string,
     @Query('expires') expires: string,

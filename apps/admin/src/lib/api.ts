@@ -81,6 +81,34 @@ function safeJson(text: string): unknown {
   }
 }
 
+/** Bypasses apiFetch's JSON body: multipart needs its own Content-Type
+ * boundary, which fetch sets itself from a FormData body. */
+async function apiUploadFetch<T>(path: string, file: File): Promise<T> {
+  const token = await readSessionToken();
+  const body = new FormData();
+  body.append('file', file);
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body,
+    cache: 'no-store',
+  });
+
+  const text = await response.text();
+  const parsed = text ? safeJson(text) : null;
+
+  if (!response.ok) {
+    const message =
+      (parsed as { message?: string } | null)?.message ?? `${response.status} ${response.statusText}`;
+    if (response.status === 401) throw new SessionExpiredError(message);
+    throw new ApiError(response.status, message, parsed);
+  }
+
+  return parsed as T;
+}
+
 export interface HealthResponse {
   status: 'ok' | 'degraded';
   environment: string;
@@ -113,6 +141,9 @@ export interface CurrentUser {
   name: string;
   role: string;
   assignedBrandIds: string[];
+  /** True for an INVITED user still signed in on the temporary password set
+   * for them — the layout sends these straight to /set-password. */
+  mustResetPassword: boolean;
 }
 
 /** `token: null` because there is no session yet — this is the call that mints one. */
@@ -130,6 +161,16 @@ export function logout(): Promise<void> {
 
 export function getCurrentUser(): Promise<CurrentUser> {
   return apiFetch<CurrentUser>('/auth/me');
+}
+
+/** FR-AUTH-007/021: forced first-login reset off a temporary password, or a
+ * later voluntary change — same endpoint either way. Requires only the live
+ * session already on this request, not the current password. */
+export function setPassword(newPassword: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>('/auth/set-password', {
+    method: 'POST',
+    body: JSON.stringify({ newPassword }),
+  });
 }
 
 // --- Brands ------------------------------------------------------------------
@@ -152,6 +193,7 @@ export function listBrands(): Promise<Brand[]> {
 export interface BrandFormInput {
   legalName: string;
   displayName: string;
+  businessType: 'SOLE_PROPRIETORSHIP' | 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'NONPROFIT';
   salesPersonName: string | null;
   phone: string | null;
   email: string | null;
@@ -166,6 +208,87 @@ export interface BrandFormInput {
 
 export function createBrand(input: BrandFormInput): Promise<Brand> {
   return apiFetch<Brand>('/brands', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** Separate from createBrand because the logo's storage key is namespaced by
+ * brand id (brands/{id}/logo/...) — there is nothing to upload to until the
+ * brand exists. */
+export function uploadBrandLogo(brandId: string, file: File): Promise<{ logoUrl: string }> {
+  return apiUploadFetch(`/brands/${brandId}/logo`, file);
+}
+
+// --- Merchant onboarding (FR-ONB) ---------------------------------------------
+
+/** A brand has no meaning until a merchant decides whether it operates one
+ * or several — these are staged directly on the merchant, not a Brand,
+ * because no Brand may exist yet when this is collected. */
+export interface CompanyDetails {
+  legalName: string;
+  businessType: string;
+  phone: string | null;
+  email: string | null;
+  mailingAddress: CustomerAddress | null;
+  billingAddress: CustomerAddress | null;
+  taxId: string | null;
+  hasLogo: boolean;
+}
+
+export interface MerchantOnboardingState {
+  /** Null until setCompanyDetails has been called at least once. */
+  companyDetails: CompanyDetails | null;
+  /** Null until chooseBrandStructure has been called. */
+  brandStructure: 'SINGLE' | 'MULTI' | null;
+  hasBrands: boolean;
+  /** SINGLE sets this the instant its one brand is created. MULTI leaves it
+   * false until completeMultiBrandOnboarding is called — how many brands a
+   * MULTI merchant intends to add isn't implied by any count of brands. */
+  onboardingComplete: boolean;
+}
+
+export function getMerchantOnboarding(): Promise<MerchantOnboardingState> {
+  return apiFetch<MerchantOnboardingState>('/merchant/onboarding');
+}
+
+export interface CompanyDetailsFormInput {
+  legalName: string;
+  businessType: 'SOLE_PROPRIETORSHIP' | 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'NONPROFIT';
+  phone: string | null;
+  email: string | null;
+  mailingAddress: CustomerAddress | null;
+  billingAddress: CustomerAddress | null;
+  taxId: string | null;
+}
+
+export function saveCompanyDetails(input: CompanyDetailsFormInput): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>('/merchant/company-details', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function uploadCompanyLogo(file: File): Promise<{ logoUrl: string }> {
+  return apiUploadFetch('/merchant/logo', file);
+}
+
+export interface ChooseBrandStructureResult {
+  /** Populated only for SINGLE — the one brand just created from the staged
+   * company details. Null for MULTI, which creates no brand by itself. */
+  brand: { id: string; displayName: string } | null;
+}
+
+export function chooseBrandStructure(
+  structure: 'SINGLE' | 'MULTI',
+): Promise<ChooseBrandStructureResult> {
+  return apiFetch<ChooseBrandStructureResult>('/merchant/brand-structure', {
+    method: 'POST',
+    body: JSON.stringify({ structure }),
+  });
+}
+
+/** MULTI's own "I'm done adding brands" action — rejected by the API if no
+ * brand has been created yet. */
+export function completeMultiBrandOnboarding(): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>('/merchant/complete-onboarding', { method: 'POST' });
 }
 
 // --- Customers (FR-CUS) ------------------------------------------------------

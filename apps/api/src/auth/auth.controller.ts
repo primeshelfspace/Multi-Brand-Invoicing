@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { loginSchema, type LoginInput, type RequestScope } from '@fenwick/shared';
+import { loginSchema, setPasswordSchema, type LoginInput, type RequestScope, type SetPasswordInput } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';
 import { AuthService, type AuthenticatedUser } from './auth.service.js';
@@ -83,7 +83,24 @@ export class AuthController {
       name: profile?.name ?? '',
       role: scope.role,
       assignedBrandIds: scope.assignedBrandIds,
+      mustResetPassword: profile?.mustResetPassword ?? false,
     };
+  }
+
+  /**
+   * FR-AUTH-007/021. Requires only a live session, not the current password —
+   * see AuthService.setPassword for why. Used both by the forced first-login
+   * reset (INVITED, temporary password) and any later voluntary change.
+   */
+  @Post('set-password')
+  @RequirePermission('ORGANISATION_PROFILE', 'READ', { brandFrom: 'none' })
+  @HttpCode(200)
+  async setPassword(
+    @CurrentScope() scope: RequestScope,
+    @Body(zodPipe(setPasswordSchema)) body: SetPasswordInput,
+  ): Promise<{ ok: true }> {
+    await this.auth.setPassword(scope, body.newPassword);
+    return { ok: true };
   }
 }
 
@@ -94,4 +111,5 @@ export interface CurrentUserResponse {
   name: string;
   role: string;
   assignedBrandIds: readonly string[];
+  mustResetPassword: boolean;
 }

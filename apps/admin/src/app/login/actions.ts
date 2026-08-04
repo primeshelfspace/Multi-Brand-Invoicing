@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { ApiError, login } from '@/lib/api';
+import { resolveOnboardingStep, routeForStep } from '@/lib/onboarding';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';
 
 export interface LoginState {
@@ -17,6 +18,8 @@ export interface LoginState {
  */
 const GENERIC_FAILURE = 'That email and password combination was not recognised.';
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function loginAction(_prevState: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
@@ -24,6 +27,11 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
 
   if (!email || !password) {
     return { error: 'Enter your email address and password.', email };
+  }
+  // The form validates this too, but a request can always arrive without
+  // having run that JS — the server is the check that actually holds.
+  if (!EMAIL_PATTERN.test(email)) {
+    return { error: 'Enter a valid email address.', email };
   }
 
   let result;
@@ -43,5 +51,16 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
 
   // Outside the try/catch on purpose: redirect() signals by throwing, and
   // catching it here would turn a successful sign-in into an error message.
+  // A signed-in user with unfinished onboarding (forced password reset
+  // included — resolveOnboardingStep checks that first) goes there instead
+  // of wherever they were originally headed; a fully onboarded user gets
+  // their original destination back.
+  const step = await resolveOnboardingStep(result.user);
+  if (step === 'set-password') {
+    redirect(`/set-password?next=${encodeURIComponent(returnTo)}`);
+  }
+  if (step) {
+    redirect(routeForStep(step));
+  }
   redirect(returnTo);
 }

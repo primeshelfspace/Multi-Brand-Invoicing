@@ -42,6 +42,7 @@
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^6.4.17",
     "prisma": "^5.22.0",

@@ -11,7 +11,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RequestScope } from '@fenwick/shared';
 import type { PrismaService } from '../infra/prisma/prisma.service.js';
 import { AuthService } from './auth.service.js';
-import { hashPassword } from './password.js';
+import { hashPassword, verifyPassword } from './password.js';
 import type { SessionService } from './session.service.js';
 
 const PASSWORD = 'correct-horse-battery-staple';
@@ -228,13 +228,32 @@ describe('AuthService.login', () => {
     await expect(auth.login(attempt)).resolves.toMatchObject({ token: 'token-for-user-1' });
   });
 
-  it.each(['INVITED', 'SUSPENDED'])('refuses a %s user holding the right password', async (status) => {
-    users[0]!.status = status;
+  it('refuses a SUSPENDED user holding the right password', async () => {
+    users[0]!.status = 'SUSPENDED';
 
     await expect(auth.login(attempt)).rejects.toThrow(UnauthorizedException);
 
     expect(issued).toEqual([]);
-    expect(audit.at(-1)).toMatchObject({ metadata: { reason: `STATUS_${status}` } });
+    expect(audit.at(-1)).toMatchObject({ metadata: { reason: 'STATUS_SUSPENDED' } });
+  });
+
+  // FR-AUTH-007/021: an INVITED user signs in on the temporary password like
+  // anyone else — mustResetPassword is what routes them onward, not a rejection.
+  it('signs an INVITED user in and flags mustResetPassword', async () => {
+    users[0]!.status = 'INVITED';
+
+    const result = await auth.login(attempt);
+
+    expect(result.token).toBe('token-for-user-1');
+    expect(result.user.mustResetPassword).toBe(true);
+    expect(issued).toEqual(['user-1']);
+    expect(audit.at(-1)).toMatchObject({ action: 'AUTH_LOGIN', outcome: 'SUCCESS' });
+  });
+
+  it('does not flag mustResetPassword for an ACTIVE user', async () => {
+    const result = await auth.login(attempt);
+
+    expect(result.user.mustResetPassword).toBe(false);
   });
 
   // Email is unique per merchant, not globally (schema.prisma) — the password
@@ -281,5 +300,38 @@ describe('AuthService.logout', () => {
 
     expect(revoked).toEqual(['session-1']);
     expect(audit.at(-1)).toMatchObject({ action: 'AUTH_LOGOUT', outcome: 'SUCCESS' });
+  });
+});
+
+describe('AuthService.setPassword', () => {
+  const scope: RequestScope = {
+    merchantId: 'merchant-1',
+    userId: 'user-1',
+    role: 'MERCHANT_OWNER',
+    assignedBrandIds: [],
+    sessionId: 'session-1',
+    sourceIp: '198.51.100.7',
+  };
+
+  it('hashes the new password, flips status to ACTIVE, and records an audit row', async () => {
+    const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'INVITED' })];
+    const audit: AuditRow[] = [];
+    const auth = new AuthService(fakePrisma(users, audit), fakeSessions([]));
+
+    await auth.setPassword(scope, 'a-brand-new-password');
+
+    expect(users[0]!.status).toBe('ACTIVE');
+    expect(users[0]!.passwordHash).not.toBe(PASSWORD);
+    await expect(verifyPassword('a-brand-new-password', users[0]!.passwordHash)).resolves.toBe(true);
+    expect(audit.at(-1)).toMatchObject({ action: 'AUTH_PASSWORD_SET', outcome: 'SUCCESS' });
+  });
+
+  it('leaves an already-ACTIVE user ACTIVE', async () => {
+    const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'ACTIVE' })];
+    const auth = new AuthService(fakePrisma(users, []), fakeSessions([]));
+
+    await auth.setPassword(scope, 'a-brand-new-password');
+
+    expect(users[0]!.status).toBe('ACTIVE');
   });
 });
