@@ -48,7 +48,9 @@ export function ZohoLivePanel({
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch(`/settings/zoho/activity?brandId=${brandId}`, { cache: 'no-store' });
+      const response = await fetch(`/settings/zoho/activity?brandId=${brandId}`, {
+        cache: 'no-store',
+      });
       if (!response.ok) return;
       setEntries((await response.json()) as ZohoActivityEntry[]);
       setLastPolledAt(new Date());
@@ -68,7 +70,8 @@ export function ZohoLivePanel({
     try {
       const path = kind === 'sync' ? 'backfill' : 'pull';
       const response = await fetch(`/settings/zoho/${path}?brandId=${brandId}`, { method: 'POST' });
-      const body = (await response.json().catch(() => null)) as (BackfillCounts & { message?: string }) | null;
+      const body = (await response.json().catch(() => null)) as
+        (BackfillCounts & { message?: string }) | null;
 
       if (!response.ok) {
         setActionMessage(body?.message ?? 'Could not queue this.');
@@ -92,9 +95,13 @@ export function ZohoLivePanel({
     }
   }
 
-  const pendingCount = entries.filter((e) => e.status === 'RUNNING' || e.status === 'QUEUED').length;
+  const pendingCount = entries.filter(
+    (e) => e.status === 'RUNNING' || e.status === 'QUEUED',
+  ).length;
   const succeededCount = entries.filter((e) => e.status === 'SUCCEEDED').length;
-  const failedCount = entries.filter((e) => e.status === 'FAILED' || e.status === 'DEAD_LETTERED').length;
+  const failedCount = entries.filter(
+    (e) => e.status === 'FAILED' || e.status === 'DEAD_LETTERED',
+  ).length;
 
   return (
     <div>
@@ -151,7 +158,9 @@ export function ZohoLivePanel({
             </p>
             <div className="mt-2 flex gap-4 text-xs">
               <span className="text-ink-muted">{pendingCount} pending</span>
-              <span className="text-success">{succeededCount} succeeded (real, confirmed by Zoho)</span>
+              <span className="text-success">
+                {succeededCount} succeeded (real, confirmed by Zoho)
+              </span>
               <span className="text-danger">{failedCount} failed</span>
             </div>
             {lastPolledAt && (
@@ -170,7 +179,8 @@ export function ZohoLivePanel({
                 <li key={i} className="px-5 py-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium text-ink-strong">
-                      {entry.direction === 'PUSH' ? '↑ Push' : '↓ Pull'} {entry.objectType.toLowerCase()}
+                      {entry.direction === 'PUSH' ? '↑ Push' : '↓ Pull'}{' '}
+                      {entry.objectType.toLowerCase()}
                     </span>
                     <span className={`text-xs font-medium ${statusTone(entry.status)}`}>
                       {statusLabel(entry.status)}

@@ -56,7 +56,10 @@ export class PaymentsService {
     const outcome = await this.prisma.withScope(scope, async (tx) => {
       const invoice = await tx.invoice.findFirst({
         where: { id: scope.invoiceId },
-        include: { lineItems: { orderBy: { position: 'asc' } }, customer: { select: { email: true } } },
+        include: {
+          lineItems: { orderBy: { position: 'asc' } },
+          customer: { select: { email: true } },
+        },
       });
       if (!invoice) throw new BadRequestException('invoice not found');
 
@@ -186,9 +189,13 @@ export class PaymentsService {
           // Only meaningful while the client still has work to do (Stripe's
           // client_secret for REQUIRES_ACTION); a terminal status has nothing
           // left for the client to confirm.
-          clientToken: gatewayResult.status === 'REQUIRES_ACTION' ? (gatewayResult.clientToken ?? null) : null,
+          clientToken:
+            gatewayResult.status === 'REQUIRES_ACTION' ? (gatewayResult.clientToken ?? null) : null,
         },
-        sync: gatewayResult.status === 'SUCCEEDED' ? { brandId: invoice.brandId, paymentId: payment.id } : null,
+        sync:
+          gatewayResult.status === 'SUCCEEDED'
+            ? { brandId: invoice.brandId, paymentId: payment.id }
+            : null,
       };
     });
 
@@ -300,7 +307,10 @@ export class PaymentsService {
     );
 
     if (gatewayStatus === 'SUCCEEDED') {
-      await this.queue.enqueue('sync', 'zoho-push-payment', { brandId: invoice.brandId, paymentId: payment.id });
+      await this.queue.enqueue('sync', 'zoho-push-payment', {
+        brandId: invoice.brandId,
+        paymentId: payment.id,
+      });
     }
   }
 
@@ -322,7 +332,8 @@ export class PaymentsService {
       declineReason: string | null;
     },
   ): Promise<void> {
-    const { invoiceId, paymentId, invoiceTotalMinor, gatewayStatus, occurredAt, declineReason } = input;
+    const { invoiceId, paymentId, invoiceTotalMinor, gatewayStatus, occurredAt, declineReason } =
+      input;
     // SETTLE_FULL and PAYMENT_FAILED do not gate on line count; only ISSUE
     // does. Passed as 0 here rather than threading it through unused.
     const lineItemCount = 0;
@@ -434,7 +445,13 @@ export class PaymentsService {
    */
   private isMethodEnabled(
     method: PaymentMethod,
-    settings: { cardEnabled: boolean; applePayEnabled: boolean; googlePayEnabled: boolean; achEnabled: boolean; checkEnabled: boolean },
+    settings: {
+      cardEnabled: boolean;
+      applePayEnabled: boolean;
+      googlePayEnabled: boolean;
+      achEnabled: boolean;
+      checkEnabled: boolean;
+    },
   ): boolean {
     switch (method) {
       case 'CARD':

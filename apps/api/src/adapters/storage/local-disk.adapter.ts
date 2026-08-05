@@ -65,7 +65,9 @@ export class LocalDiskAdapter implements StoragePort {
         key,
         size: stat.size,
         contentType: meta.contentType ?? 'application/octet-stream',
-        checksum: createHash('sha256').update(await fs.readFile(target)).digest('hex'),
+        checksum: createHash('sha256')
+          .update(await fs.readFile(target))
+          .digest('hex'),
         storedAt: stat.mtime,
       };
     } catch {

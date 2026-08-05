@@ -66,7 +66,10 @@ export class IntegrationConnectionService {
     credentials: ZohoCredentials,
     config: ZohoConnectionConfig,
   ): Promise<void> {
-    const encrypted = encryptCredential(JSON.stringify(credentials), this.env.CREDENTIAL_ENCRYPTION_KEY);
+    const encrypted = encryptCredential(
+      JSON.stringify(credentials),
+      this.env.CREDENTIAL_ENCRYPTION_KEY,
+    );
     await this.prisma.withScope(scope, (tx) =>
       tx.integrationConnection.upsert({
         where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
@@ -91,10 +94,18 @@ export class IntegrationConnectionService {
 
   async getStatus(scope: Scope, brandId: string): Promise<ZohoConnectionStatus> {
     const row = await this.prisma.withScope(scope, (tx) =>
-      tx.integrationConnection.findUnique({ where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } } }),
+      tx.integrationConnection.findUnique({
+        where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
+      }),
     );
     if (!row) {
-      return { connected: false, organizationName: null, lastSyncAt: null, lastPulledAt: null, health: null };
+      return {
+        connected: false,
+        organizationName: null,
+        lastSyncAt: null,
+        lastPulledAt: null,
+        health: null,
+      };
     }
     const config = row.config as unknown as ZohoConnectionConfig | null;
     return {
@@ -136,9 +147,14 @@ export class IntegrationConnectionService {
    * brand has never connected — the caller decides whether that is "nothing
    * to do" or an error.
    */
-  async buildAccountingConnection(scope: Scope, brandId: string): Promise<AccountingConnection | null> {
+  async buildAccountingConnection(
+    scope: Scope,
+    brandId: string,
+  ): Promise<AccountingConnection | null> {
     const row = await this.prisma.withScope(scope, (tx) =>
-      tx.integrationConnection.findUnique({ where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } } }),
+      tx.integrationConnection.findUnique({
+        where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
+      }),
     );
     if (!row?.encryptedCredentials || row.status !== 'CONNECTED') return null;
 

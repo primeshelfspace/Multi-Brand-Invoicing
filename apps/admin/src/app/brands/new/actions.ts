@@ -13,7 +13,13 @@ export interface CompanyDetailsState {
   readonly error?: string;
 }
 
-const BUSINESS_TYPES = new Set(['SOLE_PROPRIETORSHIP', 'LLC', 'CORPORATION', 'PARTNERSHIP', 'NONPROFIT']);
+const BUSINESS_TYPES = new Set([
+  'SOLE_PROPRIETORSHIP',
+  'LLC',
+  'CORPORATION',
+  'PARTNERSHIP',
+  'NONPROFIT',
+]);
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {
   if (typeof value !== 'string') return null;
@@ -24,7 +30,9 @@ function emptyToNull(value: FormDataEntryValue | null): string | null {
 function describeApiError(error: ApiError): string {
   const body = error.body as { issues?: Array<{ path: string; message: string }> } | null;
   if (body?.issues?.length) {
-    return body.issues.map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message)).join(' · ');
+    return body.issues
+      .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
+      .join(' · ');
   }
   return error.message;
 }

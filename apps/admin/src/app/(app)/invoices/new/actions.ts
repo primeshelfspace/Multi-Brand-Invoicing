@@ -21,9 +21,14 @@ function percentToBp(value: FormDataEntryValue | null): number {
 }
 
 function describeApiError(error: ApiError): string {
-  const body = error.body as { issues?: Array<{ path: string; message: string }>; message?: string } | null;
+  const body = error.body as {
+    issues?: Array<{ path: string; message: string }>;
+    message?: string;
+  } | null;
   if (body?.issues?.length) {
-    return body.issues.map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message)).join(' · ');
+    return body.issues
+      .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
+      .join(' · ');
   }
   return body?.message ?? error.message;
 }

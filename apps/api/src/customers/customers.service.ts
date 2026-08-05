@@ -1,4 +1,9 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type Customer } from '@prisma/client';
 import type { CustomerInput, CustomerListQuery, Scope } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';

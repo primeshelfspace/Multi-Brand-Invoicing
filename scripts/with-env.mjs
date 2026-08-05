@@ -44,7 +44,10 @@ function parseValue(raw) {
 
 /** Expands bash-style ${VAR:-default} tokens, since Windows shells don't. */
 function expandDefault(arg) {
-  return arg.replace(/\$\{([A-Z_][A-Z0-9_]*):-([^}]*)\}/g, (_, name, fallback) => process.env[name] ?? fallback);
+  return arg.replace(
+    /\$\{([A-Z_][A-Z0-9_]*):-([^}]*)\}/g,
+    (_, name, fallback) => process.env[name] ?? fallback,
+  );
 }
 
 const [command, ...rawArgs] = process.argv.slice(2);

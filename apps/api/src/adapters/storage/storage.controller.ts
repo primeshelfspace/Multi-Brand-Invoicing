@@ -44,7 +44,10 @@ export class StorageController {
     response.setHeader('content-type', meta.contentType);
     response.setHeader('cache-control', 'private, no-store');
     if (filename) {
-      response.setHeader('content-disposition', `attachment; filename="${filename.replace(/"/g, '')}"`);
+      response.setHeader(
+        'content-disposition',
+        `attachment; filename="${filename.replace(/"/g, '')}"`,
+      );
     }
     response.send(body);
   }

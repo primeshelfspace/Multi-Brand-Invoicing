@@ -156,12 +156,17 @@ export class MerchantService {
       }
 
       if (structure === 'MULTI') {
-        await tx.merchant.update({ where: { id: scope.merchantId }, data: { brandStructure: 'MULTI' } });
+        await tx.merchant.update({
+          where: { id: scope.merchantId },
+          data: { brandStructure: 'MULTI' },
+        });
         return null;
       }
 
       if (!merchant.companyLegalName || !merchant.companyBusinessType) {
-        throw new BadRequestException('company details must be completed before choosing single brand');
+        throw new BadRequestException(
+          'company details must be completed before choosing single brand',
+        );
       }
 
       const brand = await tx.brand.create({

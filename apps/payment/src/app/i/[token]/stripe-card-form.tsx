@@ -32,7 +32,10 @@ export function StripeCardForm({
 }) {
   // One Stripe.js load per distinct key — stable across re-renders of this
   // component for the lifetime of this invoice page.
-  const stripePromise = useMemo(() => (publishableKey ? loadStripe(publishableKey) : null), [publishableKey]);
+  const stripePromise = useMemo(
+    () => (publishableKey ? loadStripe(publishableKey) : null),
+    [publishableKey],
+  );
 
   if (!stripePromise) {
     return (
@@ -44,7 +47,12 @@ export function StripeCardForm({
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <CardFormInner returnUrl={returnUrl} onSucceeded={onSucceeded} onFailed={onFailed} onCancel={onCancel} />
+      <CardFormInner
+        returnUrl={returnUrl}
+        onSucceeded={onSucceeded}
+        onFailed={onFailed}
+        onCancel={onCancel}
+      />
     </Elements>
   );
 }

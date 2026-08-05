@@ -322,7 +322,9 @@ describe('AuthService.setPassword', () => {
 
     expect(users[0]!.status).toBe('ACTIVE');
     expect(users[0]!.passwordHash).not.toBe(PASSWORD);
-    await expect(verifyPassword('a-brand-new-password', users[0]!.passwordHash)).resolves.toBe(true);
+    await expect(verifyPassword('a-brand-new-password', users[0]!.passwordHash)).resolves.toBe(
+      true,
+    );
     expect(audit.at(-1)).toMatchObject({ action: 'AUTH_PASSWORD_SET', outcome: 'SUCCESS' });
   });
 

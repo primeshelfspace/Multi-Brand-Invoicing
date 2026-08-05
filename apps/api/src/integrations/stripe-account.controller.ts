@@ -1,5 +1,21 @@
-import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
-import { IntegrationError, idSchema, stripeCredentialsSchema, type Scope, type StripeCredentialsInput } from '@fenwick/shared';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
+import {
+  IntegrationError,
+  idSchema,
+  stripeCredentialsSchema,
+  type Scope,
+  type StripeCredentialsInput,
+} from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import { StripeAccountService, type StripeAccountStatus } from './stripe-account.service.js';

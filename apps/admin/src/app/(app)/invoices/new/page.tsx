@@ -18,8 +18,11 @@ export default async function NewInvoicePage({
         <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
           <p className="font-medium">No brand selected.</p>
           <p className="mt-1">
-            Go back to <Link href="/invoices" className="underline">Invoices</Link> and choose a
-            brand first.
+            Go back to{' '}
+            <Link href="/invoices" className="underline">
+              Invoices
+            </Link>{' '}
+            and choose a brand first.
           </p>
         </div>
       </main>

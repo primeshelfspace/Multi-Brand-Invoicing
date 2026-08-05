@@ -70,7 +70,11 @@ export function StructureForm() {
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="brandStructure" value={selected ?? ''} />
 
-      <div role="radiogroup" aria-label="Brand structure" className="flex flex-col gap-6 sm:flex-row">
+      <div
+        role="radiogroup"
+        aria-label="Brand structure"
+        className="flex flex-col gap-6 sm:flex-row"
+      >
         {OPTIONS.map((option) => (
           <StructureCard
             key={option.value}
@@ -82,7 +86,10 @@ export function StructureForm() {
       </div>
 
       {state.error && (
-        <p role="alert" className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p
+          role="alert"
+          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
           {state.error}
         </p>
       )}

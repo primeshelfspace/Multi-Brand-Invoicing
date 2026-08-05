@@ -1,7 +1,12 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { ApiError, completeMultiBrandOnboarding, createBrand, type BrandFormInput } from '@/lib/api';
+import {
+  ApiError,
+  completeMultiBrandOnboarding,
+  createBrand,
+  type BrandFormInput,
+} from '@/lib/api';
 
 export interface AddBrandState {
   readonly error?: string;
@@ -17,7 +22,10 @@ function emptyToNull(value: FormDataEntryValue | null): string | null {
  * the name instead, falling back to a fixed default when nothing usable
  * survives the strip (e.g. a name that's all punctuation or non-Latin). */
 function invoicePrefixFrom(legalName: string): string {
-  const derived = legalName.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase();
+  const derived = legalName
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(0, 3)
+    .toUpperCase();
   return derived || 'INV';
 }
 

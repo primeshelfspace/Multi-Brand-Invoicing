@@ -1,6 +1,13 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
-import { ApiError, getZohoActivity, getZohoStatus, listBrands, type Brand, type ZohoActivityEntry } from '@/lib/api';
+import {
+  ApiError,
+  getZohoActivity,
+  getZohoStatus,
+  listBrands,
+  type Brand,
+  type ZohoActivityEntry,
+} from '@/lib/api';
 import { ZohoLivePanel } from './live-panel';
 
 export const dynamic = 'force-dynamic';
@@ -125,7 +132,9 @@ export default async function ZohoSettingsPage({
                       {status.connected && (
                         <span className="mt-0.5 block text-xs text-ink-muted">
                           Last pull:{' '}
-                          {status.lastPulledAt ? new Date(status.lastPulledAt).toLocaleString() : 'Never yet'}
+                          {status.lastPulledAt
+                            ? new Date(status.lastPulledAt).toLocaleString()
+                            : 'Never yet'}
                         </span>
                       )}
                       {status.health && (

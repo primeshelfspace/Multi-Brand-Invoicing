@@ -134,9 +134,17 @@ export class ZohoSyncService {
         tx.customer.findMany({ where: { brandId, zohoContactId: null }, select: { id: true } }),
       ]),
     );
-    const payments = rawPayments.map((p) => ({ id: p.id, invoiceId: p.invoiceId, customerId: p.invoice.customerId }));
+    const payments = rawPayments.map((p) => ({
+      id: p.id,
+      invoiceId: p.invoiceId,
+      customerId: p.invoice.customerId,
+    }));
 
-    const { customersToEnqueue, invoicesToEnqueue } = computeBackfillTargets({ payments, invoices, customers });
+    const { customersToEnqueue, invoicesToEnqueue } = computeBackfillTargets({
+      payments,
+      invoices,
+      customers,
+    });
 
     await Promise.all([
       ...customersToEnqueue.map((c) =>
@@ -145,7 +153,9 @@ export class ZohoSyncService {
       ...invoicesToEnqueue.map((i) =>
         this.queue.enqueue('sync', 'zoho-push-invoice', { brandId, invoiceId: i.id }),
       ),
-      ...payments.map((p) => this.queue.enqueue('sync', 'zoho-push-payment', { brandId, paymentId: p.id })),
+      ...payments.map((p) =>
+        this.queue.enqueue('sync', 'zoho-push-payment', { brandId, paymentId: p.id }),
+      ),
     ]);
 
     const counts = {
@@ -187,7 +197,10 @@ export class ZohoSyncService {
 
       const result = await this.zoho.upsertCustomer(connection, dto);
       await this.prisma.withScope(scope, (tx) =>
-        tx.customer.update({ where: { id: customer.id }, data: { zohoContactId: result.remoteId } }),
+        tx.customer.update({
+          where: { id: customer.id },
+          data: { zohoContactId: result.remoteId },
+        }),
       );
     });
   }
@@ -211,7 +224,10 @@ export class ZohoSyncService {
       }
       const customerRemoteId = (
         await this.prisma.withScope(scope, (tx) =>
-          tx.customer.findUniqueOrThrow({ where: { id: invoice.customerId }, select: { zohoContactId: true } }),
+          tx.customer.findUniqueOrThrow({
+            where: { id: invoice.customerId },
+            select: { zohoContactId: true },
+          }),
         )
       ).zohoContactId;
       if (!customerRemoteId) {
@@ -302,7 +318,10 @@ export class ZohoSyncService {
 
       const result = await this.zoho.pushPayment(connection, dto);
       await this.prisma.withScope(scope, (tx) =>
-        tx.payment.update({ where: { id: refreshed.id }, data: { zohoPaymentId: result.remoteId } }),
+        tx.payment.update({
+          where: { id: refreshed.id },
+          data: { zohoPaymentId: result.remoteId },
+        }),
       );
     });
   }
@@ -334,18 +353,20 @@ export class ZohoSyncService {
     objectId: string,
     work: () => Promise<void>,
   ): Promise<void> {
-    const job = await this.prisma.withoutScope(`recording sync job start for brand ${brandId}`, (client) =>
-      client.syncJob.create({
-        data: {
-          brandId,
-          provider: 'ZOHO_BOOKS',
-          direction: 'PUSH',
-          objectType,
-          objectId,
-          status: 'RUNNING',
-          attemptCount: 1,
-        },
-      }),
+    const job = await this.prisma.withoutScope(
+      `recording sync job start for brand ${brandId}`,
+      (client) =>
+        client.syncJob.create({
+          data: {
+            brandId,
+            provider: 'ZOHO_BOOKS',
+            direction: 'PUSH',
+            objectType,
+            objectId,
+            status: 'RUNNING',
+            attemptCount: 1,
+          },
+        }),
     );
 
     try {
@@ -364,11 +385,15 @@ export class ZohoSyncService {
           data: {
             status: 'FAILED',
             errorClass: integrationError?.errorClass ?? 'PERMANENT',
-            lastError: integrationError?.providerMessage ?? (error instanceof Error ? error.message : String(error)),
+            lastError:
+              integrationError?.providerMessage ??
+              (error instanceof Error ? error.message : String(error)),
           },
         }),
       );
-      this.logger.warn(`Zoho push failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`);
+      this.logger.warn(
+        `Zoho push failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
+      );
 
       // A non-retryable class (e.g. VALIDATION — "this customer already
       // exists") will never succeed no matter how many times BullMQ retries

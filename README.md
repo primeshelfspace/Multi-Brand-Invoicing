@@ -24,14 +24,14 @@ Use any seeded address with the password `db:seed` prints — `pnpm db:seed`
 creates one user per role, so signing in as each is how you exercise the
 permission matrix:
 
-| Email                                | Role           | Brands                      |
-| ------------------------------------ | -------------- | --------------------------- |
-| owner@fenwickholdings.test            | MERCHANT_OWNER | all                         |
-| admin@fenwickholdings.test            | MERCHANT_ADMIN | all                         |
-| brand.admin@fenwickholdings.test      | BRAND_ADMIN    | Solstice, Meridian          |
-| finance@fenwickholdings.test          | FINANCE_USER   | Solstice, Meridian, Cobalt  |
-| sales@fenwickholdings.test            | SALES_USER     | Solstice                    |
-| readonly@fenwickholdings.test         | READ_ONLY      | Solstice, Cobalt            |
+| Email                            | Role           | Brands                     |
+| -------------------------------- | -------------- | -------------------------- |
+| owner@fenwickholdings.test       | MERCHANT_OWNER | all                        |
+| admin@fenwickholdings.test       | MERCHANT_ADMIN | all                        |
+| brand.admin@fenwickholdings.test | BRAND_ADMIN    | Solstice, Meridian         |
+| finance@fenwickholdings.test     | FINANCE_USER   | Solstice, Meridian, Cobalt |
+| sales@fenwickholdings.test       | SALES_USER     | Solstice                   |
+| readonly@fenwickholdings.test    | READ_ONLY      | Solstice, Cobalt           |
 
 The admin app is a back-end-for-front-end: `POST /auth/login` returns the
 session token, the app stores it in its own httpOnly cookie, and replays it
@@ -81,21 +81,21 @@ The one thing worth actually clicking through. Everything below runs against
 `FakeGatewayAdapter` (`PAYMENT_GATEWAY_DRIVER=fake`, the default) — no real
 money, no external service, fully deterministic.
 
-1. **Add a customer** — http://localhost:3000/customers → *Add customer*.
+1. **Add a customer** — http://localhost:3000/customers → _Add customer_.
 2. **Create and issue an invoice** — http://localhost:3000/invoices →
-   *Create invoice* → pick the customer, add a line item or two, *Create &
-   issue*. You land back on the invoice list with a real payment link.
+   _Create invoice_ → pick the customer, add a line item or two, _Create &
+   issue_. You land back on the invoice list with a real payment link.
 3. **Open the payment link** and pay. FakeGateway reads the outcome off the
    **last two digits of the amount actually charged** (which includes the
    card fee, when card is the method) — so you can provoke each path on
    purpose by nudging a line item's price:
 
-   | Last two digits | Outcome |
-   | ---------------- | ------- |
-   | anything else     | succeeds — invoice goes to `PAID`, balance clears |
-   | `11`               | declines — invoice reverts to whatever it was before the attempt |
-   | `22`               | goes `PENDING_PAYMENT`, like a real ACH transfer, and stays there |
-   | `33`               | simulated gateway timeout |
+   | Last two digits | Outcome                                                           |
+   | --------------- | ----------------------------------------------------------------- |
+   | anything else   | succeeds — invoice goes to `PAID`, balance clears                 |
+   | `11`            | declines — invoice reverts to whatever it was before the attempt  |
+   | `22`            | goes `PENDING_PAYMENT`, like a real ACH transfer, and stays there |
+   | `33`            | simulated gateway timeout                                         |
 
 4. **Settling a pending payment** has no button in the UI yet — it only
    happens through a signed gateway webhook. To do it by hand:
@@ -135,7 +135,7 @@ role, because an owner bypasses RLS. `apps/api/src/tenancy/rls.test.ts` proves
 all of this against a real database.
 
 One consequence worth knowing before you touch it: `PrismaService.withoutScope`
-is the only legitimate way to look something up *before* a tenant scope is
+is the only legitimate way to look something up _before_ a tenant scope is
 known — the public payment page resolving a token to a brand, for instance.
 It cannot simply skip setting the scope variables on the app's own RLS-bound
 connection, because every policy here reads "no scope set" as "deny," not

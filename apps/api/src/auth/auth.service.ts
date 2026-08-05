@@ -208,10 +208,17 @@ export class AuthService {
         data: { passwordHash, status: 'ACTIVE' },
       }),
     );
-    await this.record(scope.merchantId, scope.userId, 'SUCCESS', null, {
-      sourceIp: scope.sourceIp,
-      userAgent: null,
-    }, AUDIT_PASSWORD_SET);
+    await this.record(
+      scope.merchantId,
+      scope.userId,
+      'SUCCESS',
+      null,
+      {
+        sourceIp: scope.sourceIp,
+        userAgent: null,
+      },
+      AUDIT_PASSWORD_SET,
+    );
   }
 
   /** FR-AUTH-010: sign-out terminates the session server-side, not just in the browser. */
@@ -265,7 +272,9 @@ export class AuthService {
       });
 
       if (failures >= MAX_FAILURES_IN_WINDOW) {
-        this.logger.warn(`locked user ${userId} for ${LOCKOUT_MINUTES}m after ${failures} failures`);
+        this.logger.warn(
+          `locked user ${userId} for ${LOCKOUT_MINUTES}m after ${failures} failures`,
+        );
       }
     });
   }

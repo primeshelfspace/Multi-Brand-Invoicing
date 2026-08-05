@@ -28,7 +28,9 @@ function readAddress(formData: FormData, prefix: string): CustomerAddress | null
 function describeApiError(error: ApiError): string {
   const body = error.body as { issues?: Array<{ path: string; message: string }> } | null;
   if (body?.issues?.length) {
-    return body.issues.map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message)).join(' · ');
+    return body.issues
+      .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
+      .join(' · ');
   }
   return error.message;
 }
@@ -57,7 +59,8 @@ export async function createCustomerAction(
   // (possibly empty), so the empty case is checked explicitly rather than
   // relying on `??`, which only catches null/undefined.
   const joinedName = [firstName, lastName].filter(Boolean).join(' ').trim();
-  const displayName = emptyToNull(formData.get('displayName')) ?? companyName ?? (joinedName || null);
+  const displayName =
+    emptyToNull(formData.get('displayName')) ?? companyName ?? (joinedName || null);
 
   if (!displayName) {
     return { error: 'Enter a company name, a contact name, or a display name.' };

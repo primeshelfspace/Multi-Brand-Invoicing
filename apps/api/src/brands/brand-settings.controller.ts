@@ -1,5 +1,10 @@
 import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
-import { idSchema, paymentMethodSettingsSchema, type PaymentMethodSettingsInput, type Scope } from '@fenwick/shared';
+import {
+  idSchema,
+  paymentMethodSettingsSchema,
+  type PaymentMethodSettingsInput,
+  type Scope,
+} from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import { BrandSettingsService, type PaymentMethodSettings } from './brand-settings.service.js';

@@ -1,6 +1,12 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
-import { ApiError, getPaymentMethodSettings, getStripeAccountStatus, listBrands, type Brand } from '@/lib/api';
+import {
+  ApiError,
+  getPaymentMethodSettings,
+  getStripeAccountStatus,
+  listBrands,
+  type Brand,
+} from '@/lib/api';
 import { StripeForm } from '../stripe/stripe-form';
 import { MethodsForm } from './methods-form';
 
@@ -11,7 +17,12 @@ const FALLBACK_THEME_COLOUR = '#16261F';
 export default async function PaymentMethodsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brandId?: string; saved?: string; stripeSaved?: string; stripeTested?: string }>;
+  searchParams: Promise<{
+    brandId?: string;
+    saved?: string;
+    stripeSaved?: string;
+    stripeTested?: string;
+  }>;
 }) {
   const params = await searchParams;
 

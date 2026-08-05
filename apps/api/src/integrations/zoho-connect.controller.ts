@@ -1,4 +1,15 @@
-import { BadGatewayException, BadRequestException, Controller, Get, Inject, Logger, Param, Post, Query, Res } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Controller,
+  Get,
+  Inject,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { IntegrationError, idSchema, type Scope } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
@@ -84,7 +95,9 @@ export class ZohoConnectController {
    */
   @Post('brands/:brandId/integrations/zoho/pull')
   @RequirePermission('INTEGRATIONS', 'WRITE')
-  async pullNow(@Param('brandId', zodPipe(idSchema)) brandId: string): Promise<{ queued: boolean }> {
+  async pullNow(
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+  ): Promise<{ queued: boolean }> {
     await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId });
     return { queued: true };
   }
@@ -171,7 +184,9 @@ export class ZohoConnectController {
       response.redirect(`${adminUrl}/settings/zoho?brandId=${brandId}&connected=1`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      response.redirect(`${adminUrl}/settings/zoho?brandId=${brandId}&error=${encodeURIComponent(message)}`);
+      response.redirect(
+        `${adminUrl}/settings/zoho?brandId=${brandId}&error=${encodeURIComponent(message)}`,
+      );
     }
   }
 }

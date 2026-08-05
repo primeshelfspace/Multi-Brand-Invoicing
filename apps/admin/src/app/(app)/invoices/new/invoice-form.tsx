@@ -15,9 +15,16 @@ interface Row {
   taxExempt: boolean;
 }
 
-const emptyRow: Row = { itemName: '', description: '', quantity: '1', unitPrice: '', taxExempt: false };
+const emptyRow: Row = {
+  itemName: '',
+  description: '',
+  quantity: '1',
+  unitPrice: '',
+  taxExempt: false,
+};
 
-const inputClass = 'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong';
+const inputClass =
+  'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong';
 const labelClass = 'mb-1 block text-xs font-medium text-ink-muted';
 
 export function InvoiceForm({ brandId, customers }: { brandId: string; customers: Customer[] }) {
@@ -54,11 +61,23 @@ export function InvoiceForm({ brandId, customers }: { brandId: string; customers
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="block">
             <span className={labelClass}>Invoice date</span>
-            <input type="date" name="invoiceDate" defaultValue={today} required className={inputClass} />
+            <input
+              type="date"
+              name="invoiceDate"
+              defaultValue={today}
+              required
+              className={inputClass}
+            />
           </label>
           <label className="block">
             <span className={labelClass}>Due date</span>
-            <input type="date" name="dueDate" defaultValue={in30Days} required className={inputClass} />
+            <input
+              type="date"
+              name="dueDate"
+              defaultValue={in30Days}
+              required
+              className={inputClass}
+            />
           </label>
         </div>
 

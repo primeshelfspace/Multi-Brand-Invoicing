@@ -42,7 +42,13 @@ function Toggle({
   );
 }
 
-export function MethodsForm({ brandId, initial }: { brandId: string; initial: PaymentMethodSettings }) {
+export function MethodsForm({
+  brandId,
+  initial,
+}: {
+  brandId: string;
+  initial: PaymentMethodSettings;
+}) {
   const [state, formAction, pending] = useActionState(updatePaymentMethodsAction, initialState);
   const [settings, setSettings] = useState(initial);
 
@@ -100,7 +106,9 @@ export function MethodsForm({ brandId, initial }: { brandId: string; initial: Pa
         </div>
       )}
       {state.error && (
-        <div className="mt-4 rounded-md bg-danger-surface p-3 text-sm text-danger">{state.error}</div>
+        <div className="mt-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
+          {state.error}
+        </div>
       )}
 
       <button

@@ -44,7 +44,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
           <p className="text-sm text-ink-muted">{invoice.brand.displayName}</p>
           <h1 className="mt-1 text-lg font-medium text-ink-strong">Invoice {invoice.number}</h1>
           <p className="mt-6 text-sm font-medium text-ink-strong">
-            {invoice.status === 'PAID' ? 'This invoice has been paid.' : 'This invoice was cancelled.'}
+            {invoice.status === 'PAID'
+              ? 'This invoice has been paid.'
+              : 'This invoice was cancelled.'}
           </p>
         </Shell>
       </div>

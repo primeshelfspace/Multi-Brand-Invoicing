@@ -16,5 +16,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     headers: { Authorization: `Bearer ${token}` },
   });
   const body = await upstream.text();
-  return new NextResponse(body, { status: upstream.status, headers: { 'Content-Type': 'application/json' } });
+  return new NextResponse(body, {
+    status: upstream.status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }

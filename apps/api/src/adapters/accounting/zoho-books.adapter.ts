@@ -339,8 +339,12 @@ export class ZohoBooksAdapter implements AccountingPort {
       customer_sub_type: customer.type === 'BUSINESS' ? 'business' : 'individual',
       email: customer.email ?? undefined,
       phone: customer.phone ?? undefined,
-      billing_address: customer.billingAddress ? this.toZohoAddress(customer.billingAddress) : undefined,
-      shipping_address: customer.shippingAddress ? this.toZohoAddress(customer.shippingAddress) : undefined,
+      billing_address: customer.billingAddress
+        ? this.toZohoAddress(customer.billingAddress)
+        : undefined,
+      shipping_address: customer.shippingAddress
+        ? this.toZohoAddress(customer.shippingAddress)
+        : undefined,
     };
 
     const body = customer.remoteId
@@ -357,7 +361,10 @@ export class ZohoBooksAdapter implements AccountingPort {
           { body: payload },
         );
 
-    return { remoteId: body.contact.contact_id, updatedAt: this.parseZohoTimestamp(body.contact.last_modified_time) };
+    return {
+      remoteId: body.contact.contact_id,
+      updatedAt: this.parseZohoTimestamp(body.contact.last_modified_time),
+    };
   }
 
   /**
@@ -370,7 +377,10 @@ export class ZohoBooksAdapter implements AccountingPort {
    * pushed total still reconciles exactly, rather than silently dropping it
    * because Zoho's own tax engine has nothing to reference.
    */
-  async pushInvoice(connection: AccountingConnection, invoice: AccountingInvoice): Promise<RemoteRef> {
+  async pushInvoice(
+    connection: AccountingConnection,
+    invoice: AccountingInvoice,
+  ): Promise<RemoteRef> {
     const lineItems = invoice.lines.map((line) => ({
       name: line.name,
       description: line.description ?? undefined,
@@ -423,7 +433,10 @@ export class ZohoBooksAdapter implements AccountingPort {
           { body: payload },
         );
 
-    return { remoteId: body.invoice.invoice_id, updatedAt: this.parseZohoTimestamp(body.invoice.last_modified_time) };
+    return {
+      remoteId: body.invoice.invoice_id,
+      updatedAt: this.parseZohoTimestamp(body.invoice.last_modified_time),
+    };
   }
 
   /**
@@ -433,7 +446,10 @@ export class ZohoBooksAdapter implements AccountingPort {
    * the two vocabularies do not match one-for-one (WALLET has no dedicated
    * mode in Zoho and settles as creditcard for accounting purposes).
    */
-  async pushPayment(connection: AccountingConnection, payment: AccountingPayment): Promise<RemoteRef> {
+  async pushPayment(
+    connection: AccountingConnection,
+    payment: AccountingPayment,
+  ): Promise<RemoteRef> {
     const payload = {
       customer_id: payment.customerRemoteId,
       payment_mode: this.mapPaymentMode(payment.method),
@@ -586,10 +602,16 @@ export class ZohoBooksAdapter implements AccountingPort {
     }>(connection, 'GET', '/books/v3/contacts', {
       query: { page: String(page), per_page: '200' },
     });
-    return { contacts: body.contacts ?? [], hasMorePage: Boolean(body.page_context?.has_more_page) };
+    return {
+      contacts: body.contacts ?? [],
+      hasMorePage: Boolean(body.page_context?.has_more_page),
+    };
   }
 
-  async getContact(connection: AccountingConnection, contactId: string): Promise<ZohoContactDetail> {
+  async getContact(
+    connection: AccountingConnection,
+    contactId: string,
+  ): Promise<ZohoContactDetail> {
     const body = await this.request<{ contact: ZohoContactDetail }>(
       connection,
       'GET',
@@ -618,7 +640,10 @@ export class ZohoBooksAdapter implements AccountingPort {
     return { invoices: body.invoices ?? [], hasMorePage: Boolean(pageContext?.has_more_page) };
   }
 
-  async getInvoice(connection: AccountingConnection, invoiceId: string): Promise<ZohoInvoiceDetail> {
+  async getInvoice(
+    connection: AccountingConnection,
+    invoiceId: string,
+  ): Promise<ZohoInvoiceDetail> {
     const body = await this.request<{ invoice: ZohoInvoiceDetail }>(
       connection,
       'GET',
@@ -637,10 +662,16 @@ export class ZohoBooksAdapter implements AccountingPort {
     }>(connection, 'GET', '/books/v3/customerpayments', {
       query: { page: String(page), per_page: '200' },
     });
-    return { payments: body.customerpayments ?? [], hasMorePage: Boolean(body.page_context?.has_more_page) };
+    return {
+      payments: body.customerpayments ?? [],
+      hasMorePage: Boolean(body.page_context?.has_more_page),
+    };
   }
 
-  async getPayment(connection: AccountingConnection, paymentId: string): Promise<ZohoPaymentDetail> {
+  async getPayment(
+    connection: AccountingConnection,
+    paymentId: string,
+  ): Promise<ZohoPaymentDetail> {
     const body = await this.request<{ payment: ZohoPaymentDetail }>(
       connection,
       'GET',

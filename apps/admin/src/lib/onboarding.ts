@@ -9,11 +9,7 @@ import { LOGIN_PATH, readSessionToken } from './session';
  * actually happened. `null` means onboarding is complete.
  */
 export type OnboardingStep =
-  | 'set-password'
-  | 'company-details'
-  | 'brand-structure'
-  | 'multi-brand-setup'
-  | null;
+  'set-password' | 'company-details' | 'brand-structure' | 'multi-brand-setup' | null;
 
 export async function resolveOnboardingStep(user: CurrentUser): Promise<OnboardingStep> {
   if (user.mustResetPassword) return 'set-password';

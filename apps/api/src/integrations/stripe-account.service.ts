@@ -48,7 +48,11 @@ export class StripeAccountService {
    * key should surface here, at save time, not on a customer's payment
    * attempt three weeks later.
    */
-  async saveCredentials(scope: Scope, brandId: string, input: StripeCredentialsInput): Promise<void> {
+  async saveCredentials(
+    scope: Scope,
+    brandId: string,
+    input: StripeCredentialsInput,
+  ): Promise<void> {
     await this.testConnection(input.secretKey);
 
     const encrypted = encryptCredential(
@@ -175,7 +179,10 @@ export class StripeAccountService {
     return config?.publishableKey ?? null;
   }
 
-  private async getStoredCredentialsScoped(scope: Scope, brandId: string): Promise<StripeGatewayCredentials | null> {
+  private async getStoredCredentialsScoped(
+    scope: Scope,
+    brandId: string,
+  ): Promise<StripeGatewayCredentials | null> {
     const row = await this.prisma.withScope(scope, (tx) =>
       tx.integrationConnection.findUnique({
         where: { brandId_provider: { brandId, provider: 'STRIPE' } },

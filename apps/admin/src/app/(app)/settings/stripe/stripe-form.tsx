@@ -1,7 +1,11 @@
 'use client';
 
 import { useActionState } from 'react';
-import { saveStripeCredentialsAction, testStripeConnectionAction, type StripeFormState } from './actions';
+import {
+  saveStripeCredentialsAction,
+  testStripeConnectionAction,
+  type StripeFormState,
+} from './actions';
 
 const initialState: StripeFormState = {};
 
@@ -31,8 +35,8 @@ export function StripeForm({ brandId, connected }: { brandId: string; connected:
             className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong placeholder:text-ink-subtle focus:border-brand focus-visible:outline-none"
           />
           <span className="mt-1 block text-xs text-ink-muted">
-            Never sent back to this screen once saved — required again here only if you are
-            rotating it.
+            Never sent back to this screen once saved — required again here only if you are rotating
+            it.
           </span>
         </label>
 
@@ -52,7 +56,9 @@ export function StripeForm({ brandId, connected }: { brandId: string; connected:
         </label>
 
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink-strong">Webhook signing secret</span>
+          <span className="mb-1.5 block text-sm font-medium text-ink-strong">
+            Webhook signing secret
+          </span>
           <input
             type="password"
             name="webhookSecret"
@@ -68,7 +74,9 @@ export function StripeForm({ brandId, connected }: { brandId: string; connected:
         </label>
 
         {saveState.error && (
-          <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">{saveState.error}</div>
+          <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">
+            {saveState.error}
+          </div>
         )}
 
         <button
@@ -84,7 +92,9 @@ export function StripeForm({ brandId, connected }: { brandId: string; connected:
         <form action={testAction} className="border-t border-border pt-4">
           <input type="hidden" name="brandId" value={brandId} />
           {testState.error && (
-            <div className="mb-3 rounded-md bg-danger-surface p-3 text-sm text-danger">{testState.error}</div>
+            <div className="mb-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
+              {testState.error}
+            </div>
           )}
           <button
             type="submit"

@@ -42,7 +42,10 @@ export function AddBrandForm() {
       </label>
 
       {state.error && (
-        <p role="alert" className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p
+          role="alert"
+          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
           {state.error}
         </p>
       )}

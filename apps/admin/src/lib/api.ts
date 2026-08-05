@@ -101,7 +101,8 @@ async function apiUploadFetch<T>(path: string, file: File): Promise<T> {
 
   if (!response.ok) {
     const message =
-      (parsed as { message?: string } | null)?.message ?? `${response.status} ${response.statusText}`;
+      (parsed as { message?: string } | null)?.message ??
+      `${response.status} ${response.statusText}`;
     if (response.status === 401) throw new SessionExpiredError(message);
     throw new ApiError(response.status, message, parsed);
   }

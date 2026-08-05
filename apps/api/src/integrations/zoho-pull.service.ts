@@ -3,7 +3,10 @@ import { Prisma } from '@prisma/client';
 import { IntegrationError, type AccountingConnection, type Scope } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
-import { ZohoBooksAdapter, type ZohoInvoiceDetail } from '../adapters/accounting/zoho-books.adapter.js';
+import {
+  ZohoBooksAdapter,
+  type ZohoInvoiceDetail,
+} from '../adapters/accounting/zoho-books.adapter.js';
 import { IntegrationConnectionService } from './integration-connection.service.js';
 
 export interface PullCounts {
@@ -125,8 +128,7 @@ export class ZohoPullService {
       const contact = await this.zoho.getContact(connection, contactId);
       const data = {
         type: (contact.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
-          | 'INDIVIDUAL'
-          | 'BUSINESS',
+          'INDIVIDUAL' | 'BUSINESS',
         displayName: contact.contact_name,
         companyName: contact.company_name ?? null,
         firstName: contact.first_name ?? null,
@@ -140,7 +142,9 @@ export class ZohoPullService {
       };
 
       await this.prisma.withScope(scope, async (tx) => {
-        const existing = await tx.customer.findFirst({ where: { brandId, zohoContactId: contactId } });
+        const existing = await tx.customer.findFirst({
+          where: { brandId, zohoContactId: contactId },
+        });
         if (existing) {
           await tx.customer.update({ where: { id: existing.id }, data });
         } else {
@@ -150,7 +154,11 @@ export class ZohoPullService {
     });
   }
 
-  private async localCustomerId(scope: Scope, brandId: string, contactId: string): Promise<string | null> {
+  private async localCustomerId(
+    scope: Scope,
+    brandId: string,
+    contactId: string,
+  ): Promise<string | null> {
     const row = await this.prisma.withScope(scope, (tx) =>
       tx.customer.findFirst({ where: { brandId, zohoContactId: contactId }, select: { id: true } }),
     );
@@ -172,7 +180,11 @@ export class ZohoPullService {
       const sinceIso = cursor ? cursor.toISOString() : null;
 
       while (hasMore) {
-        const { invoices, hasMorePage } = await this.zoho.listInvoicesPage(connection, page, sinceIso);
+        const { invoices, hasMorePage } = await this.zoho.listInvoicesPage(
+          connection,
+          page,
+          sinceIso,
+        );
         for (const item of invoices) {
           await this.pullOneInvoice(scope, brandId, connection, item.invoice_id);
           touched++;
@@ -213,13 +225,7 @@ export class ZohoPullService {
         customerId,
         number: invoice.invoice_number,
         status: (INVOICE_STATUS_MAP[invoice.status] ?? 'SENT') as
-          | 'DRAFT'
-          | 'SENT'
-          | 'VIEWED'
-          | 'PENDING_PAYMENT'
-          | 'PARTIALLY_PAID'
-          | 'PAID'
-          | 'CANCELLED',
+          'DRAFT' | 'SENT' | 'VIEWED' | 'PENDING_PAYMENT' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED',
         invoiceDate: new Date(invoice.date),
         dueDate: new Date(invoice.due_date),
         currency: invoice.currency_code,
@@ -232,7 +238,9 @@ export class ZohoPullService {
       };
 
       await this.prisma.withScope(scope, async (tx) => {
-        const existing = await tx.invoice.findFirst({ where: { brandId, zohoInvoiceId: invoiceId } });
+        const existing = await tx.invoice.findFirst({
+          where: { brandId, zohoInvoiceId: invoiceId },
+        });
         const row = existing
           ? await tx.invoice.update({ where: { id: existing.id }, data })
           : await tx.invoice.create({
@@ -290,7 +298,11 @@ export class ZohoPullService {
 
   // --- Customer payments ---------------------------------------------------
 
-  private async pullPayments(scope: Scope, brandId: string, connection: AccountingConnection): Promise<number> {
+  private async pullPayments(
+    scope: Scope,
+    brandId: string,
+    connection: AccountingConnection,
+  ): Promise<number> {
     return this.recordPull(brandId, 'PAYMENT', 'list', async () => {
       let page = 1;
       let hasMore = true;
@@ -356,7 +368,9 @@ export class ZohoPullService {
       };
 
       await this.prisma.withScope(scope, async (tx) => {
-        const existing = await tx.payment.findFirst({ where: { brandId, zohoPaymentId: paymentId } });
+        const existing = await tx.payment.findFirst({
+          where: { brandId, zohoPaymentId: paymentId },
+        });
         if (existing) {
           await tx.payment.update({ where: { id: existing.id }, data });
         } else {
@@ -390,16 +404,28 @@ export class ZohoPullService {
     objectId: string,
     work: () => Promise<T>,
   ): Promise<T> {
-    const job = await this.prisma.withoutScope(`recording pull job start for brand ${brandId}`, (client) =>
-      client.syncJob.create({
-        data: { brandId, provider: 'ZOHO_BOOKS', direction: 'PULL', objectType, objectId, status: 'RUNNING' },
-      }),
+    const job = await this.prisma.withoutScope(
+      `recording pull job start for brand ${brandId}`,
+      (client) =>
+        client.syncJob.create({
+          data: {
+            brandId,
+            provider: 'ZOHO_BOOKS',
+            direction: 'PULL',
+            objectType,
+            objectId,
+            status: 'RUNNING',
+          },
+        }),
     );
 
     try {
       const result = await work();
       await this.prisma.withoutScope(`recording pull job success for brand ${brandId}`, (client) =>
-        client.syncJob.update({ where: { id: job.id }, data: { status: 'SUCCEEDED', completedAt: new Date() } }),
+        client.syncJob.update({
+          where: { id: job.id },
+          data: { status: 'SUCCEEDED', completedAt: new Date() },
+        }),
       );
       return result;
     } catch (error) {
@@ -410,11 +436,15 @@ export class ZohoPullService {
           data: {
             status: 'FAILED',
             errorClass: integrationError?.errorClass ?? 'PERMANENT',
-            lastError: integrationError?.providerMessage ?? (error instanceof Error ? error.message : String(error)),
+            lastError:
+              integrationError?.providerMessage ??
+              (error instanceof Error ? error.message : String(error)),
           },
         }),
       );
-      this.logger.warn(`Zoho pull failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`);
+      this.logger.warn(
+        `Zoho pull failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
+      );
       throw error;
     }
   }

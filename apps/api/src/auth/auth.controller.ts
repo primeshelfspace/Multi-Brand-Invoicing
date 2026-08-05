@@ -1,6 +1,12 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { loginSchema, setPasswordSchema, type LoginInput, type RequestScope, type SetPasswordInput } from '@fenwick/shared';
+import {
+  loginSchema,
+  setPasswordSchema,
+  type LoginInput,
+  type RequestScope,
+  type SetPasswordInput,
+} from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';
 import { AuthService, type AuthenticatedUser } from './auth.service.js';

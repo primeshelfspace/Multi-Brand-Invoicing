@@ -29,7 +29,9 @@ describeWithDb('PaymentsService', () => {
   const customers = new CustomersService(prisma, queue);
   const invoices = new InvoicesService(prisma, queue);
   const payments = new PaymentsService(prisma, env!, gateway, queue);
-  const owner = new PrismaClient({ datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } } });
+  const owner = new PrismaClient({
+    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+  });
 
   let merchantId = '';
   let brandId = '';
@@ -81,7 +83,9 @@ describeWithDb('PaymentsService', () => {
 
   /** A fresh, issued invoice with a total ending in the given two digits, so
    * FakeGateway's scenario selection is exact rather than incidental. */
-  async function issuedInvoice(lastTwoDigits: string): Promise<{ id: string; publicScope: PublicScope }> {
+  async function issuedInvoice(
+    lastTwoDigits: string,
+  ): Promise<{ id: string; publicScope: PublicScope }> {
     const draft: InvoiceDraftInput = {
       brandId,
       customerId,
@@ -151,7 +155,10 @@ describeWithDb('PaymentsService', () => {
     expect(payment.status).toBe('PROCESSING');
     expect(payment.gatewayReference).not.toBeNull();
 
-    const { body, headers } = gateway.simulateWebhook(payment.gatewayReference!, 'PAYMENT_SUCCEEDED');
+    const { body, headers } = gateway.simulateWebhook(
+      payment.gatewayReference!,
+      'PAYMENT_SUCCEEDED',
+    );
     await payments.handleWebhook(Buffer.from(body), headers);
 
     const settled = await owner.invoice.findUniqueOrThrow({ where: { id } });
@@ -209,7 +216,10 @@ describeWithDb('PaymentsService', () => {
     const payment = await owner.payment.findFirstOrThrow({ where: { invoiceId: id } });
     expect(payment.status).toBe('PROCESSING');
 
-    const { body, headers } = gateway.simulateWebhook(payment.gatewayReference!, 'PAYMENT_SUCCEEDED');
+    const { body, headers } = gateway.simulateWebhook(
+      payment.gatewayReference!,
+      'PAYMENT_SUCCEEDED',
+    );
     await payments.handleWebhook(Buffer.from(body), headers);
     await payments.handleWebhook(Buffer.from(body), headers); // identical event, replayed
 

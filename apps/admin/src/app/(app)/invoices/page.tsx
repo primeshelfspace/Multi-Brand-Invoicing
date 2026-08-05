@@ -93,7 +93,9 @@ export default async function InvoicesPage({
 
             <section className="rounded-lg border border-border bg-surface shadow-sm">
               {invoicesError ? (
-                <div className="p-6 text-sm text-danger">Could not load invoices: {invoicesError}</div>
+                <div className="p-6 text-sm text-danger">
+                  Could not load invoices: {invoicesError}
+                </div>
               ) : invoices.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 p-12 text-center">
                   <ScrollText className="h-8 w-8 text-ink-subtle" aria-hidden />

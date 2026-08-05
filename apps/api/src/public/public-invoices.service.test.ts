@@ -29,7 +29,9 @@ describeWithDb('PublicInvoicesService', () => {
   const customers = new CustomersService(prisma, queue);
   const invoices = new InvoicesService(prisma, queue);
   const publicInvoices = new PublicInvoicesService(prisma, new StripeAccountService(prisma, env!));
-  const owner = new PrismaClient({ datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } } });
+  const owner = new PrismaClient({
+    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+  });
 
   let solsticeId = '';
   let northgateId = '';
@@ -73,7 +75,9 @@ describeWithDb('PublicInvoicesService', () => {
     await Promise.all([prisma.$disconnect(), owner.$disconnect()]);
   });
 
-  async function issuedInvoice(brandId: string = solsticeId): Promise<{ id: string; publicToken: string }> {
+  async function issuedInvoice(
+    brandId: string = solsticeId,
+  ): Promise<{ id: string; publicToken: string }> {
     const scope = brandId === northgateId ? northgateOwnerScope : ownerScope;
     const customerInput: CustomerInput = {
       type: 'BUSINESS',
@@ -94,7 +98,15 @@ describeWithDb('PublicInvoicesService', () => {
       invoiceDate: new Date('2026-01-01'),
       dueDate: new Date('2026-01-31'),
       currency: 'USD',
-      lines: [{ itemName: 'Test item', description: null, quantity: '1', unitPrice: '50.00', taxExempt: true }],
+      lines: [
+        {
+          itemName: 'Test item',
+          description: null,
+          quantity: '1',
+          unitPrice: '50.00',
+          taxExempt: true,
+        },
+      ],
       taxRateBp: 0,
       cardFeeRateBp: 0,
       notes: null,
@@ -133,7 +145,9 @@ describeWithDb('PublicInvoicesService', () => {
     const first = await publicInvoices.view(scope);
     expect(first!.status).toBe('VIEWED');
 
-    const events = await owner.invoiceEvent.findMany({ where: { invoiceId: scope.invoiceId, eventType: 'FIRST_VIEW' } });
+    const events = await owner.invoiceEvent.findMany({
+      where: { invoiceId: scope.invoiceId, eventType: 'FIRST_VIEW' },
+    });
     expect(events).toHaveLength(1);
 
     const second = await publicInvoices.view(scope);
@@ -151,7 +165,7 @@ describeWithDb('PublicInvoicesService', () => {
     expect(view!.lines[0]?.quantity).toBe('1');
   });
 
-  it('refuses to view a foreign brand\'s invoice even if a scope is hand-built to target it', async () => {
+  it("refuses to view a foreign brand's invoice even if a scope is hand-built to target it", async () => {
     const { id: solsticeInvoiceId } = await issuedInvoice(solsticeId);
     const { id: northgateInvoiceId } = await issuedInvoice(northgateId);
 
@@ -171,8 +185,12 @@ describeWithDb('PublicInvoicesService', () => {
     // The honestly-resolved scope for the same invoice still works, proving
     // the null above is RLS denial and not some unrelated lookup failure.
     const legitimate = await publicInvoices.resolveScope(
-      (await owner.invoice.findUniqueOrThrow({ where: { id: solsticeInvoiceId }, select: { publicToken: true } }))
-        .publicToken,
+      (
+        await owner.invoice.findUniqueOrThrow({
+          where: { id: solsticeInvoiceId },
+          select: { publicToken: true },
+        })
+      ).publicToken,
     );
     expect(await publicInvoices.view(legitimate!)).not.toBeNull();
   });

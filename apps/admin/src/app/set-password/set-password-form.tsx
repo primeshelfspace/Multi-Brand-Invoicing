@@ -68,7 +68,11 @@ function PasswordField({
           className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[#64748B]
                      hover:text-[#0F172A] focus-visible:outline-none"
         >
-          {visible ? <EyeOff className="h-5 w-5" aria-hidden /> : <Eye className="h-5 w-5" aria-hidden />}
+          {visible ? (
+            <EyeOff className="h-5 w-5" aria-hidden />
+          ) : (
+            <Eye className="h-5 w-5" aria-hidden />
+          )}
         </button>
       </div>
       {error && (

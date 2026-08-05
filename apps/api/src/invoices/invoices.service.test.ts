@@ -24,7 +24,9 @@ describeWithDb('InvoicesService', () => {
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
   const invoices = new InvoicesService(prisma, queue);
-  const owner = new PrismaClient({ datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } } });
+  const owner = new PrismaClient({
+    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+  });
 
   let merchantId = '';
   let solsticeId = '';
@@ -93,8 +95,20 @@ describeWithDb('InvoicesService', () => {
       dueDate: new Date('2026-01-31'),
       currency: 'USD',
       lines: [
-        { itemName: 'Cast-iron cookware set', description: null, quantity: '12', unitPrice: '200.00', taxExempt: false },
-        { itemName: 'Ceramic bakeware bundle', description: null, quantity: '6', unitPrice: '120.00', taxExempt: false },
+        {
+          itemName: 'Cast-iron cookware set',
+          description: null,
+          quantity: '12',
+          unitPrice: '200.00',
+          taxExempt: false,
+        },
+        {
+          itemName: 'Ceramic bakeware bundle',
+          description: null,
+          quantity: '6',
+          unitPrice: '120.00',
+          taxExempt: false,
+        },
       ],
       taxRateBp: 600,
       cardFeeRateBp: 290,
@@ -120,7 +134,11 @@ describeWithDb('InvoicesService', () => {
   });
 
   it('freezes the brand-current tax and fee rate onto the invoice at creation', async () => {
-    const created = await invoices.create(ownerScope, solsticeId, draft({ taxRateBp: 825, cardFeeRateBp: 350 }));
+    const created = await invoices.create(
+      ownerScope,
+      solsticeId,
+      draft({ taxRateBp: 825, cardFeeRateBp: 350 }),
+    );
     expect(created.taxRateBpApplied).toBe(825);
     expect(created.cardFeeRateBpApplied).toBe(350);
   });
@@ -144,8 +162,14 @@ describeWithDb('InvoicesService', () => {
   });
 
   it('refuses to issue an invoice for a customer with no deliverable email', async () => {
-    const created = await invoices.create(ownerScope, solsticeId, draft({ customerId: customerWithoutEmailId }));
-    await expect(invoices.issue(ownerScope, solsticeId, created.id)).rejects.toThrow(ConflictException);
+    const created = await invoices.create(
+      ownerScope,
+      solsticeId,
+      draft({ customerId: customerWithoutEmailId }),
+    );
+    await expect(invoices.issue(ownerScope, solsticeId, created.id)).rejects.toThrow(
+      ConflictException,
+    );
 
     const row = await owner.invoice.findUniqueOrThrow({ where: { id: created.id } });
     expect(row.status).toBe('DRAFT'); // refused, not half-applied
@@ -154,12 +178,16 @@ describeWithDb('InvoicesService', () => {
   it('refuses to issue an invoice that is not in Draft', async () => {
     const created = await invoices.create(ownerScope, solsticeId, draft());
     await invoices.issue(ownerScope, solsticeId, created.id);
-    await expect(invoices.issue(ownerScope, solsticeId, created.id)).rejects.toThrow(ConflictException);
+    await expect(invoices.issue(ownerScope, solsticeId, created.id)).rejects.toThrow(
+      ConflictException,
+    );
   });
 
-  it('never returns another brand\'s invoice, even by exact id', async () => {
+  it("never returns another brand's invoice, even by exact id", async () => {
     const created = await invoices.create(ownerScope, solsticeId, draft());
-    await expect(invoices.findOne(ownerScope, northgateId, created.id)).rejects.toThrow(NotFoundException);
+    await expect(invoices.findOne(ownerScope, northgateId, created.id)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it("rejects creating an invoice against another brand's customer", async () => {

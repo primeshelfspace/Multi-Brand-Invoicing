@@ -18,7 +18,10 @@ import { Public } from '../tenancy/authorisation.js';
 import { PaymentsService, type PaymentAttemptResult } from '../payments/payments.service.js';
 import { PublicInvoicesService, type PublicInvoiceView } from './public-invoices.service.js';
 
-const createIntentBodySchema = paymentIntentRequestSchema.pick({ method: true, attemptNonce: true });
+const createIntentBodySchema = paymentIntentRequestSchema.pick({
+  method: true,
+  attemptNonce: true,
+});
 type CreateIntentBody = z.infer<typeof createIntentBodySchema>;
 
 /**
@@ -87,7 +90,11 @@ export class PublicInvoicesController {
     if (!request.rawBody) {
       throw new BadRequestException('missing request body');
     }
-    await this.payments.handleWebhook(request.rawBody, request.headers as Record<string, string>, brandId);
+    await this.payments.handleWebhook(
+      request.rawBody,
+      request.headers as Record<string, string>,
+      brandId,
+    );
     return { received: true };
   }
 }

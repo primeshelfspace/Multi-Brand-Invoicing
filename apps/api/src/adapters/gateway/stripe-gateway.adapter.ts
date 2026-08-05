@@ -95,7 +95,12 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
       return {
         refundReference: refund.id,
         amountMinor: refund.amount,
-        status: refund.status === 'succeeded' ? 'SUCCEEDED' : refund.status === 'failed' ? 'FAILED' : 'PENDING',
+        status:
+          refund.status === 'succeeded'
+            ? 'SUCCEEDED'
+            : refund.status === 'failed'
+              ? 'FAILED'
+              : 'PENDING',
         occurredAt: new Date(refund.created * 1000),
       };
     } catch (error) {
@@ -133,7 +138,9 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
 
     const credentials = await this.stripeAccounts.getCredentialsForGateway(brandId);
     if (!credentials) {
-      this.logger.warn(`webhook received for brand ${brandId}, which has no Stripe account configured`);
+      this.logger.warn(
+        `webhook received for brand ${brandId}, which has no Stripe account configured`,
+      );
       return false;
     }
 
@@ -147,7 +154,9 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
       );
       return true;
     } catch (error) {
-      this.logger.warn(`stripe webhook signature rejected for brand ${brandId}: ${(error as Error).message}`);
+      this.logger.warn(
+        `stripe webhook signature rejected for brand ${brandId}: ${(error as Error).message}`,
+      );
       return false;
     }
   }
@@ -161,9 +170,10 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   parseWebhook(payload: string | Buffer, _brandId: string | null): GatewayWebhookEvent {
     const event = JSON.parse(payload.toString()) as Stripe.Event;
     const object = event.data.object as Stripe.PaymentIntent | Stripe.Charge;
-    const gatewayReference = 'payment_intent' in object && typeof object.payment_intent === 'string'
-      ? object.payment_intent
-      : object.id;
+    const gatewayReference =
+      'payment_intent' in object && typeof object.payment_intent === 'string'
+        ? object.payment_intent
+        : object.id;
 
     return {
       id: event.id,
@@ -258,7 +268,9 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
     }
   }
 
-  private mapRefundReason(reason: string | undefined): Stripe.RefundCreateParams.Reason | undefined {
+  private mapRefundReason(
+    reason: string | undefined,
+  ): Stripe.RefundCreateParams.Reason | undefined {
     if (reason === 'duplicate' || reason === 'fraudulent' || reason === 'requested_by_customer') {
       return reason;
     }

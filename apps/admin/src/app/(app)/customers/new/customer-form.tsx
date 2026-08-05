@@ -34,7 +34,12 @@ function AddressFields({ prefix, disabled }: { prefix: string; disabled?: boolea
       <Field label="City" name={`${prefix}City`} disabled={disabled} />
       <Field label="State / region" name={`${prefix}Region`} disabled={disabled} />
       <Field label="Postal code" name={`${prefix}PostalCode`} disabled={disabled} />
-      <Field label="Country (2-letter, e.g. US)" name={`${prefix}Country`} maxLength={2} disabled={disabled} />
+      <Field
+        label="Country (2-letter, e.g. US)"
+        name={`${prefix}Country`}
+        maxLength={2}
+        disabled={disabled}
+      />
     </div>
   );
 }

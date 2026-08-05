@@ -18,7 +18,10 @@ export function FinishSetupForm({ hasBrands }: { hasBrands: boolean }) {
   return (
     <form action={formAction}>
       {state.error && (
-        <p role="alert" className="mb-4 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p
+          role="alert"
+          className="mb-4 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
           {state.error}
         </p>
       )}

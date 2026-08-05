@@ -59,7 +59,12 @@ export class PublicInvoicesService {
       (client) =>
         client.invoice.findUnique({
           where: { publicToken: token },
-          select: { id: true, brandId: true, publicTokenActive: true, brand: { select: { merchantId: true } } },
+          select: {
+            id: true,
+            brandId: true,
+            publicTokenActive: true,
+            brand: { select: { merchantId: true } },
+          },
         }),
     );
     if (!invoice || !invoice.publicTokenActive) return null;
@@ -114,7 +119,9 @@ export class PublicInvoicesService {
         }
       }
 
-      const stripePublishableKey = await this.stripeAccounts.getPublishableKeyForBrand(invoice.brandId);
+      const stripePublishableKey = await this.stripeAccounts.getPublishableKeyForBrand(
+        invoice.brandId,
+      );
 
       return {
         number: invoice.number,
