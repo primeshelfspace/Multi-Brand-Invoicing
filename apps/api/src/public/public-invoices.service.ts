@@ -31,11 +31,15 @@ export interface PublicInvoiceView {
     ach: boolean;
     check: boolean;
   };
-  /** Which Stripe account `loadStripe()` should use — this brand's own
-   * publishable key, never a global one (multi-tenant Stripe). Null if this
-   * brand has not configured Stripe yet; the card option should not be
-   * offered in that case even if cardEnabled is on. */
+  /** The PLATFORM's publishable key — under Connect the browser loads Stripe.js
+   * with this plus the connected account below, rather than with a key belonging
+   * to the brand. Null if this deployment has no Stripe configured. */
   stripePublishableKey: string | null;
+  /** The brand's connected account (acct_…), passed to Stripe.js so Elements
+   * confirms against the right account. Null if this brand has not completed
+   * the Connect flow; the card option should not be offered in that case even
+   * if cardEnabled is on. */
+  stripeAccountId: string | null;
 }
 
 /**
@@ -119,9 +123,8 @@ export class PublicInvoicesService {
         }
       }
 
-      const stripePublishableKey = await this.stripeAccounts.getPublishableKeyForBrand(
-        invoice.brandId,
-      );
+      const stripeAccountId = await this.stripeAccounts.getAccountIdForBrand(invoice.brandId);
+      const stripePublishableKey = this.stripeAccounts.platformPublishableKey();
 
       return {
         number: invoice.number,
@@ -153,6 +156,7 @@ export class PublicInvoicesService {
           check: invoice.brand.settings?.checkEnabled ?? false,
         },
         stripePublishableKey,
+        stripeAccountId,
       };
     });
   }

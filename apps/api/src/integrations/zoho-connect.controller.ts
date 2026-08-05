@@ -23,7 +23,7 @@ import {
   type ZohoActivityEntry,
   type ZohoConnectionStatus,
 } from './integration-connection.service.js';
-import { signZohoState, verifyZohoState } from './zoho-oauth-state.js';
+import { signOAuthState, verifyOAuthState } from './oauth-state.js';
 import { ZohoSyncService, type BackfillCounts } from './zoho-sync.service.js';
 
 /**
@@ -105,7 +105,7 @@ export class ZohoConnectController {
   @Get('brands/:brandId/integrations/zoho/connect')
   @RequirePermission('INTEGRATIONS', 'WRITE')
   connect(@Param('brandId', zodPipe(idSchema)) brandId: string, @Res() response: Response): void {
-    const state = signZohoState(brandId, this.env.SESSION_SECRET);
+    const state = signOAuthState(brandId, 'zoho', this.env.SESSION_SECRET);
     const url = new URL('/oauth/v2/auth', this.env.ZOHO_ACCOUNTS_DOMAIN);
     url.searchParams.set('client_id', this.env.ZOHO_CLIENT_ID ?? '');
     url.searchParams.set('redirect_uri', this.env.ZOHO_REDIRECT_URI ?? '');
@@ -135,7 +135,7 @@ export class ZohoConnectController {
       throw new BadRequestException('missing code or state');
     }
 
-    const verified = verifyZohoState(state, this.env.SESSION_SECRET);
+    const verified = verifyOAuthState(state, 'zoho', this.env.SESSION_SECRET);
     if (!verified) {
       response.redirect(`${adminUrl}/settings/zoho?error=invalid_or_expired_state`);
       return;

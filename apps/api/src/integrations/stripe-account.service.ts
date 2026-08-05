@@ -1,69 +1,112 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import Stripe from 'stripe';
-import { IntegrationError, type Scope, type StripeCredentialsInput } from '@fenwick/shared';
-import { decryptCredential, encryptCredential } from '../common/credential-encryption.js';
+import { IntegrationError, type Scope } from '@fenwick/shared';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
+import { signOAuthState, verifyOAuthState } from './oauth-state.js';
+
+export const STRIPE_API_VERSION = '2025-02-24.acacia';
 
 export interface StripeAccountStatus {
   readonly connected: boolean;
-  /** Safe to send to the client as-is — publishable keys are not secret. */
-  readonly publishableKey: string | null;
+  /** The connected account id (acct_…). Not a secret — it travels in the
+   * client-side Elements options and in every webhook payload. */
+  readonly accountId: string | null;
+  /** Whatever Stripe knows this business as, for display. Null until the brand
+   * finishes Stripe's own onboarding, which can outlast the OAuth redirect. */
+  readonly displayName: string | null;
+  /** False while Stripe is still collecting details from the brand — the
+   * account is linked but cannot accept a live charge yet. */
+  readonly chargesEnabled: boolean;
 }
 
-interface StoredStripeSecrets {
-  readonly secretKey: string;
-  readonly webhookSecret: string;
+/** The whole of what is stored per brand. Note what is absent: no key, no
+ * token, nothing that needs encrypting. */
+interface StripeConnectConfig {
+  readonly accountId: string;
 }
 
-interface StripeConfig {
-  readonly publishableKey: string;
-}
-
-export interface StripeGatewayCredentials {
-  readonly secretKey: string;
-  readonly webhookSecret: string;
-  readonly publishableKey: string;
-}
+type ConnectionRow = { status: string; config: unknown } | null;
 
 /**
- * Per-brand Stripe credentials, stored the same way Zoho's connection is:
- * an IntegrationConnection row (provider = 'STRIPE'), secret fields
- * envelope-encrypted, RLS-scoped by brand like every other table here.
+ * Stripe Connect (Standard), per brand.
  *
- * The secret key and webhook secret never leave this service unencrypted
- * except to be handed straight to the Stripe SDK or the webhook verifier —
- * never returned from an API response, never logged.
+ * The brand authorises the platform through Stripe's own consent screen rather
+ * than pasting API keys. What comes back is an account id (acct_…) and nothing
+ * else worth protecting: every call the platform makes on that brand's behalf
+ * goes out under the PLATFORM's secret key with `stripeAccount` set, so this
+ * service stores no per-brand credential at all.
+ *
+ * That is the substantive difference from the arrangement it replaces, which
+ * held each brand's live secret key encrypted at rest. A leak there exposed
+ * unrestricted access to the brand's entire Stripe account, including business
+ * that never touched this platform. Here the brand grants a scoped
+ * authorisation it can revoke from its own dashboard at any time, and
+ * `encryptedCredentials` stays null on every STRIPE row.
  */
 @Injectable()
 export class StripeAccountService {
+  private readonly logger = new Logger(StripeAccountService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
   /**
-   * Refuses to store a key that does not actually work — a typo'd secret
-   * key should surface here, at save time, not on a customer's payment
-   * attempt three weeks later.
+   * Where to send the brand admin to authorise. The `state` is HMAC-signed
+   * with the provider baked in — Stripe's redirect back carries no session, so
+   * this is the only thing tying the callback to the brand that began it.
    */
-  async saveCredentials(
-    scope: Scope,
-    brandId: string,
-    input: StripeCredentialsInput,
-  ): Promise<void> {
-    await this.testConnection(input.secretKey);
-
-    const encrypted = encryptCredential(
-      JSON.stringify({
-        secretKey: input.secretKey,
-        webhookSecret: input.webhookSecret,
-      } satisfies StoredStripeSecrets),
-      this.env.CREDENTIAL_ENCRYPTION_KEY,
+  buildAuthorizeUrl(brandId: string): string {
+    const clientId = this.required(this.env.STRIPE_CONNECT_CLIENT_ID, 'STRIPE_CONNECT_CLIENT_ID');
+    const redirectUri = this.required(
+      this.env.STRIPE_CONNECT_REDIRECT_URI,
+      'STRIPE_CONNECT_REDIRECT_URI',
     );
-    const config: StripeConfig = { publishableKey: input.publishableKey };
 
+    const url = new URL('https://connect.stripe.com/oauth/authorize');
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('client_id', clientId);
+    url.searchParams.set('redirect_uri', redirectUri);
+    // read_write: the platform creates PaymentIntents and refunds on the
+    // brand's account. read_only could not take a payment at all.
+    url.searchParams.set('scope', 'read_write');
+    url.searchParams.set('state', signOAuthState(brandId, 'stripe', this.env.SESSION_SECRET));
+    return url.toString();
+  }
+
+  /** Verifies the returned state and yields the brand that started the flow. */
+  verifyCallbackState(state: string): { brandId: string } | null {
+    return verifyOAuthState(state, 'stripe', this.env.SESSION_SECRET);
+  }
+
+  /**
+   * Exchanges the authorization code for the connected account id and records
+   * it. Deliberately discards the `access_token` Stripe also returns: with
+   * `stripeAccount` set per request the platform key is sufficient, so keeping
+   * a second long-lived credential would recreate precisely the storage risk
+   * this flow exists to remove.
+   */
+  async completeConnection(scope: Scope, brandId: string, code: string): Promise<void> {
+    let token: Stripe.OAuthToken;
+    try {
+      token = await this.platformClient().oauth.token({ grant_type: 'authorization_code', code });
+    } catch (error) {
+      throw this.wrap(error, 'could not complete the Stripe connection');
+    }
+
+    const accountId = token.stripe_user_id;
+    if (!accountId) {
+      throw new IntegrationError({
+        message: 'Stripe returned no account id for this authorization',
+        errorClass: 'PERMANENT',
+        provider: 'stripe',
+      });
+    }
+
+    const config: StripeConnectConfig = { accountId };
     await this.prisma.withScope(scope, (tx) =>
       tx.integrationConnection.upsert({
         where: { brandId_provider: { brandId, provider: 'STRIPE' } },
@@ -71,141 +114,180 @@ export class StripeAccountService {
           brandId,
           provider: 'STRIPE',
           status: 'CONNECTED',
-          encryptedCredentials: encrypted,
+          encryptedCredentials: null,
           config: config as unknown as Prisma.InputJsonValue,
-          health: 'Verified',
+          health: 'Connected',
         },
         update: {
           status: 'CONNECTED',
-          encryptedCredentials: encrypted,
+          // Clears any key left behind by the previous paste-your-keys flow.
+          encryptedCredentials: null,
           config: config as unknown as Prisma.InputJsonValue,
-          health: 'Verified',
+          health: 'Connected',
         },
       }),
     );
+    this.logger.log(`brand ${brandId} connected Stripe account ${accountId}`);
   }
 
-  /** publishableKey only — never the secret key or webhook secret. */
+  /**
+   * Status for the settings screen. Asks Stripe rather than trusting the stored
+   * row, because a brand can revoke from its own dashboard without telling us —
+   * a row saying CONNECTED is a claim, not evidence.
+   */
   async getStatus(scope: Scope, brandId: string): Promise<StripeAccountStatus> {
-    const row = await this.prisma.withScope(scope, (tx) =>
-      tx.integrationConnection.findUnique({
-        where: { brandId_provider: { brandId, provider: 'STRIPE' } },
+    const accountId = this.accountIdOf(await this.findConnectionScoped(scope, brandId));
+    if (!accountId) {
+      return { connected: false, accountId: null, displayName: null, chargesEnabled: false };
+    }
+
+    try {
+      const account = await this.platformClient().accounts.retrieve(accountId);
+      return {
+        connected: true,
+        accountId,
+        displayName:
+          account.business_profile?.name ?? account.settings?.dashboard?.display_name ?? null,
+        chargesEnabled: account.charges_enabled,
+      };
+    } catch (error) {
+      // Revoked at Stripe, or Stripe unreachable. Report it as unusable rather
+      // than failing the whole settings page.
+      this.logger.warn(
+        `could not retrieve Stripe account ${accountId} for brand ${brandId}: ${(error as Error).message}`,
+      );
+      return { connected: false, accountId, displayName: null, chargesEnabled: false };
+    }
+  }
+
+  /**
+   * Revokes the platform's authorisation at Stripe, then clears the row. Order
+   * matters: if the revoke fails, the row stays, so the UI keeps showing a
+   * connection that genuinely still exists rather than stranding one that could
+   * then only be cleaned up from Stripe's dashboard.
+   */
+  async disconnect(scope: Scope, brandId: string): Promise<void> {
+    const accountId = this.accountIdOf(await this.findConnectionScoped(scope, brandId));
+
+    if (accountId) {
+      try {
+        await this.platformClient().oauth.deauthorize({
+          client_id: this.required(this.env.STRIPE_CONNECT_CLIENT_ID, 'STRIPE_CONNECT_CLIENT_ID'),
+          stripe_user_id: accountId,
+        });
+      } catch (error) {
+        // Already revoked on Stripe's side is success, not failure — the goal
+        // state (this platform holds no access) is what is being asserted.
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/not connected|does not have access|No such application/i.test(message)) {
+          throw this.wrap(error, 'could not disconnect the Stripe account');
+        }
+        this.logger.warn(`Stripe account ${accountId} was already revoked: ${message}`);
+      }
+    }
+
+    await this.prisma.withScope(scope, (tx) =>
+      tx.integrationConnection.updateMany({
+        where: { brandId, provider: 'STRIPE' },
+        data: { status: 'DISCONNECTED', config: Prisma.DbNull, health: 'Disconnected' },
       }),
     );
-    const config = row?.config as StripeConfig | null | undefined;
-    return {
-      connected: row?.status === 'CONNECTED' && Boolean(row.encryptedCredentials),
-      publishableKey: config?.publishableKey ?? null,
-    };
-  }
-
-  /** Re-verifies whatever is currently saved — used by the settings page's
-   * standalone "Test connection" action, after the secret key field has
-   * already gone blank (write-only) and there is nothing left to re-type. */
-  async testStoredCredentials(scope: Scope, brandId: string): Promise<void> {
-    const creds = await this.getStoredCredentialsScoped(scope, brandId);
-    if (!creds) {
-      throw new IntegrationError({
-        message: 'Stripe is not configured for this brand yet',
-        errorClass: 'VALIDATION',
-        provider: 'stripe',
-      });
-    }
-    await this.testConnection(creds.secretKey);
-  }
-
-  /** A real, cheap, read-only Stripe call — the only way to actually know a
-   * key works, as opposed to merely being shaped like one. */
-  async testConnection(secretKey: string): Promise<void> {
-    try {
-      await new Stripe(secretKey, { apiVersion: '2025-02-24.acacia' }).balance.retrieve();
-    } catch (error) {
-      if (error instanceof Stripe.errors.StripeAuthenticationError) {
-        throw new IntegrationError({
-          message: 'Stripe rejected this secret key',
-          errorClass: 'AUTHENTICATION',
-          provider: 'stripe',
-          providerMessage: error.message,
-        });
-      }
-      throw new IntegrationError({
-        message: 'Could not reach Stripe to verify this key',
-        errorClass: 'TRANSIENT',
-        provider: 'stripe',
-        providerMessage: error instanceof Error ? error.message : String(error),
-        cause: error,
-      });
-    }
   }
 
   /**
-   * The gateway's own read path: resolving a brand's Stripe credentials to
-   * actually process a payment or verify a webhook. Unscoped on purpose —
-   * this runs from the anonymous public payment page (no session, no
-   * scope exists yet) and from Stripe's own signed webhook callback, keyed
-   * strictly by a brandId the caller already resolved through *its* own
-   * trusted path (an invoice row's brandId, or the brandId segment of the
-   * webhook URL) — the same justification as every other withoutScope call
-   * site in this codebase (see PrismaService.withoutScope).
+   * The gateway's own read path: which connected account a payment belongs to.
+   * Unscoped on purpose — this runs from the anonymous public payment page (no
+   * session, so no scope exists yet), keyed by a brandId the caller already
+   * resolved through *its* own trusted path (an invoice row's brandId). Same
+   * justification as every other withoutScope call site here.
    */
-  async getCredentialsForGateway(brandId: string): Promise<StripeGatewayCredentials | null> {
+  async getAccountIdForBrand(brandId: string): Promise<string | null> {
     const row = await this.prisma.withoutScope(
-      "resolving a brand's Stripe credentials to process a payment or verify a webhook",
-      (client) =>
-        client.integrationConnection.findUnique({
-          where: { brandId_provider: { brandId, provider: 'STRIPE' } },
-        }),
-    );
-    return this.decode(row);
-  }
-
-  /**
-   * The public payment page's own read: which publishable key `loadStripe()`
-   * should use for this brand. Deliberately never touches
-   * encryptedCredentials — there is no reason to decrypt a secret key just to
-   * read the one field that was never secret in the first place.
-   */
-  async getPublishableKeyForBrand(brandId: string): Promise<string | null> {
-    const row = await this.prisma.withoutScope(
-      "resolving a brand's Stripe publishable key for the public payment page",
+      "resolving a brand's Stripe account to process a payment",
       (client) =>
         client.integrationConnection.findUnique({
           where: { brandId_provider: { brandId, provider: 'STRIPE' } },
           select: { status: true, config: true },
         }),
     );
-    if (row?.status !== 'CONNECTED') return null;
-    const config = row.config as StripeConfig | null;
-    return config?.publishableKey ?? null;
+    return this.accountIdOf(row);
   }
 
-  private async getStoredCredentialsScoped(
-    scope: Scope,
-    brandId: string,
-  ): Promise<StripeGatewayCredentials | null> {
-    const row = await this.prisma.withScope(scope, (tx) =>
+  /**
+   * The reverse lookup, for the webhook: a connected-account event carries
+   * `account: acct_…` and nothing else identifying the tenant. Unscoped for the
+   * same reason the public-token lookup is — which brand this belongs to is
+   * precisely what it exists to discover.
+   */
+  async findBrandIdByAccountId(accountId: string): Promise<string | null> {
+    const rows = await this.prisma.withoutScope(
+      'webhook resolution by Stripe account id — the scope this event belongs to is not yet known',
+      (client) =>
+        client.integrationConnection.findMany({
+          where: { provider: 'STRIPE', status: 'CONNECTED' },
+          select: { brandId: true, status: true, config: true },
+        }),
+    );
+    return rows.find((row) => this.accountIdOf(row) === accountId)?.brandId ?? null;
+  }
+
+  /** The platform's own Stripe client. Every connected-account call reuses this
+   * and passes `{ stripeAccount }` per request. */
+  platformClient(): Stripe {
+    return new Stripe(this.required(this.env.STRIPE_SECRET_KEY, 'STRIPE_SECRET_KEY'), {
+      apiVersion: STRIPE_API_VERSION,
+    });
+  }
+
+  /** Safe to hand to the browser; publishable keys are not secret. */
+  platformPublishableKey(): string | null {
+    return this.env.STRIPE_PUBLISHABLE_KEY ?? null;
+  }
+
+  private findConnectionScoped(scope: Scope, brandId: string): Promise<ConnectionRow> {
+    return this.prisma.withScope(scope, (tx) =>
       tx.integrationConnection.findUnique({
         where: { brandId_provider: { brandId, provider: 'STRIPE' } },
+        select: { status: true, config: true },
       }),
     );
-    return this.decode(row);
   }
 
-  private decode(
-    row: { status: string; encryptedCredentials: string | null; config: unknown } | null,
-  ): StripeGatewayCredentials | null {
-    if (!row?.encryptedCredentials || row.status !== 'CONNECTED') return null;
-    const config = row.config as StripeConfig | null;
-    if (!config?.publishableKey) return null;
+  private accountIdOf(row: ConnectionRow): string | null {
+    if (!row || row.status !== 'CONNECTED') return null;
+    const config = row.config as StripeConnectConfig | null;
+    return config?.accountId ?? null;
+  }
 
-    const stored = JSON.parse(
-      decryptCredential(row.encryptedCredentials, this.env.CREDENTIAL_ENCRYPTION_KEY),
-    ) as StoredStripeSecrets;
+  private required(value: string | undefined, key: string): string {
+    if (!value) {
+      throw new IntegrationError({
+        message: `${key} is not configured on this deployment`,
+        errorClass: 'VALIDATION',
+        provider: 'stripe',
+      });
+    }
+    return value;
+  }
 
-    return {
-      secretKey: stored.secretKey,
-      webhookSecret: stored.webhookSecret,
-      publishableKey: config.publishableKey,
-    };
+  private wrap(error: unknown, message: string): IntegrationError {
+    if (error instanceof Stripe.errors.StripeError) {
+      return new IntegrationError({
+        message,
+        errorClass:
+          error instanceof Stripe.errors.StripeConnectionError ? 'TRANSIENT' : 'PERMANENT',
+        provider: 'stripe',
+        providerMessage: error.message,
+        providerCode: error.code,
+        httpStatus: error.statusCode,
+        cause: error,
+      });
+    }
+    return new IntegrationError({
+      message,
+      errorClass: 'PERMANENT',
+      provider: 'stripe',
+      cause: error,
+    });
   }
 }

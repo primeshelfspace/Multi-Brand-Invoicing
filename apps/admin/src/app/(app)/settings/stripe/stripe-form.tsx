@@ -1,110 +1,98 @@
 'use client';
 
 import { useActionState } from 'react';
-import {
-  saveStripeCredentialsAction,
-  testStripeConnectionAction,
-  type StripeFormState,
-} from './actions';
+import { disconnectStripeAction, type StripeFormState } from './actions';
 
 const initialState: StripeFormState = {};
 
 /**
- * Every field is required on every save — there is no partial update.
- * getStatus() never returns the secret key or webhook secret (they are never
- * sent to this app at all after saving), so there is nothing to pre-fill and
- * no partial value to diff against; a full re-paste is the only honest option.
+ * Stripe Connect: one button, no credentials.
+ *
+ * The connect control is an anchor rather than a form, because the API responds
+ * to it with a redirect to Stripe's own consent screen — a fetch could not
+ * follow that cross-origin, and the browser has to make the journey itself for
+ * the user to sign into Stripe at all.
  */
-export function StripeForm({ brandId, connected }: { brandId: string; connected: boolean }) {
-  const [saveState, saveAction, saving] = useActionState(saveStripeCredentialsAction, initialState);
-  const [testState, testAction, testing] = useActionState(testStripeConnectionAction, initialState);
+export function StripeForm({
+  brandId,
+  connected,
+  connectUrl,
+  displayName,
+  accountId,
+  chargesEnabled,
+}: {
+  brandId: string;
+  connected: boolean;
+  connectUrl: string;
+  displayName: string | null;
+  accountId: string | null;
+  chargesEnabled: boolean;
+}) {
+  const [disconnectState, disconnectAction, disconnecting] = useActionState(
+    disconnectStripeAction,
+    initialState,
+  );
+
+  if (!connected) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-ink-muted">
+          Connect this brand&rsquo;s Stripe account to accept card payments. You&rsquo;ll sign in to
+          Stripe and authorise this platform — there are no API keys to copy, and you can revoke
+          access from your Stripe dashboard at any time.
+        </p>
+        <a
+          href={connectUrl}
+          className="inline-flex w-full items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-medium text-brand-foreground"
+        >
+          Connect with Stripe
+        </a>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <form action={saveAction} className="space-y-4">
-        <input type="hidden" name="brandId" value={brandId} />
-
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink-strong">Secret key</span>
-          <input
-            type="password"
-            name="secretKey"
-            autoComplete="off"
-            placeholder="sk_live_... or sk_test_..."
-            required
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong placeholder:text-ink-subtle focus:border-brand focus-visible:outline-none"
-          />
-          <span className="mt-1 block text-xs text-ink-muted">
-            Never sent back to this screen once saved — required again here only if you are rotating
-            it.
-          </span>
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink-strong">Publishable key</span>
-          <input
-            type="text"
-            name="publishableKey"
-            autoComplete="off"
-            placeholder="pk_live_... or pk_test_..."
-            required
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong placeholder:text-ink-subtle focus:border-brand focus-visible:outline-none"
-          />
-          <span className="mt-1 block text-xs text-ink-muted">
-            Not secret — this is what the payment page sends to the browser to load Stripe.js.
-          </span>
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink-strong">
-            Webhook signing secret
-          </span>
-          <input
-            type="password"
-            name="webhookSecret"
-            autoComplete="off"
-            placeholder="whsec_..."
-            required
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong placeholder:text-ink-subtle focus:border-brand focus-visible:outline-none"
-          />
-          <span className="mt-1 block text-xs text-ink-muted">
-            From this brand's own Stripe webhook endpoint configuration — each brand's Stripe
-            account needs its own endpoint pointed at this brand's webhook URL.
-          </span>
-        </label>
-
-        {saveState.error && (
-          <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">
-            {saveState.error}
+    <div className="space-y-4">
+      <dl className="space-y-2 text-sm">
+        <div className="flex justify-between gap-4">
+          <dt className="text-ink-muted">Account</dt>
+          <dd className="text-right font-medium text-ink-strong">{displayName ?? 'Connected'}</dd>
+        </div>
+        {accountId && (
+          <div className="flex justify-between gap-4">
+            <dt className="text-ink-muted">Account ID</dt>
+            <dd className="text-right font-mono text-xs text-ink-muted">{accountId}</dd>
           </div>
         )}
+      </dl>
 
+      {/* Linked but not yet able to charge is a real and common state — Stripe
+          often still wants business details after the OAuth redirect finishes,
+          and card payments fail until it has them. Saying so here beats a
+          customer discovering it at checkout. */}
+      {!chargesEnabled && (
+        <div className="rounded-md bg-warning-surface p-3 text-sm text-warning">
+          Stripe still needs more details before this account can accept payments. Finish the
+          remaining steps in your Stripe dashboard.
+        </div>
+      )}
+
+      {disconnectState.error && (
+        <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">
+          {disconnectState.error}
+        </div>
+      )}
+
+      <form action={disconnectAction}>
+        <input type="hidden" name="brandId" value={brandId} />
         <button
           type="submit"
-          disabled={saving}
-          className="w-full rounded-md bg-brand px-4 py-2.5 text-sm font-medium text-brand-foreground disabled:opacity-60"
+          disabled={disconnecting}
+          className="w-full rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-ink-strong hover:bg-surface-muted disabled:opacity-60"
         >
-          {saving ? 'Saving and verifying with Stripe…' : 'Save'}
+          {disconnecting ? 'Disconnecting…' : 'Disconnect'}
         </button>
       </form>
-
-      {connected && (
-        <form action={testAction} className="border-t border-border pt-4">
-          <input type="hidden" name="brandId" value={brandId} />
-          {testState.error && (
-            <div className="mb-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
-              {testState.error}
-            </div>
-          )}
-          <button
-            type="submit"
-            disabled={testing}
-            className="w-full rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-ink-strong hover:bg-surface-muted disabled:opacity-60"
-          >
-            {testing ? 'Testing…' : 'Test connection'}
-          </button>
-        </form>
-      )}
     </div>
   );
 }

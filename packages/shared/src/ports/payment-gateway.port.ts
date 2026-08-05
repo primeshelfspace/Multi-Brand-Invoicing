@@ -101,6 +101,13 @@ export interface GatewayWebhookEvent {
    */
   readonly occurredAt: Date;
   readonly declineReason?: string | null;
+  /**
+   * The provider-side account this event belongs to, for gateways where one
+   * endpoint serves many accounts — Stripe Connect delivers every connected
+   * account's events to a single platform endpoint, tagged with `account`.
+   * Null for a gateway with one account and therefore nothing to disambiguate.
+   */
+  readonly accountRef?: string | null;
   readonly raw: unknown;
 }
 
@@ -132,6 +139,19 @@ export interface PaymentGatewayPort {
 
   /** Parses a verified payload into the platform's event shape. */
   parseWebhook(payload: string | Buffer, brandId: string | null): GatewayWebhookEvent;
+
+  /**
+   * Which brand owns the account an event came from, where the gateway routes
+   * many tenants through one endpoint. Optional: a single-account gateway has
+   * nothing to resolve and omits it, and the caller falls back to whatever
+   * brand the request path already established.
+   *
+   * This is what preserves tenant isolation once a per-brand webhook URL (and
+   * its per-brand signing secret) is replaced by one shared endpoint — the
+   * signature then proves only that the event came from the provider, not
+   * which tenant it concerns.
+   */
+  resolveBrandId?(event: GatewayWebhookEvent): Promise<string | null>;
 }
 
 export const PAYMENT_GATEWAY_PORT = Symbol('PaymentGatewayPort');

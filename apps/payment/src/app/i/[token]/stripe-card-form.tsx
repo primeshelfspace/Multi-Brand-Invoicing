@@ -10,13 +10,16 @@ import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-
  * rest of this app never see a card number, and the client_secret below is the
  * only thing standing between "form" and "money moved" (TDD-001 §10.2).
  *
- * `publishableKey` is a prop, not a build-time NEXT_PUBLIC_ env var: Stripe is
- * multi-tenant here, so which Stripe account (and therefore which
- * publishable key) applies depends on which brand's invoice this is —
- * something only known at request time, from the invoice API response.
+ * Both props come from the invoice API response rather than a build-time
+ * NEXT_PUBLIC_ env var. Under Stripe Connect the key is the platform's, but
+ * `stripeAccount` names the brand's connected account — the PaymentIntent was
+ * created on that account, so Stripe.js has to be initialised for it or the
+ * client_secret will not resolve. Which brand this is is only known at request
+ * time, so neither value can be baked into the bundle.
  */
 export function StripeCardForm({
   publishableKey,
+  stripeAccount,
   clientSecret,
   returnUrl,
   onSucceeded,
@@ -24,17 +27,18 @@ export function StripeCardForm({
   onCancel,
 }: {
   publishableKey: string | null;
+  stripeAccount: string | null;
   clientSecret: string;
   returnUrl: string;
   onSucceeded: () => void;
   onFailed: (reason: string | null) => void;
   onCancel: () => void;
 }) {
-  // One Stripe.js load per distinct key — stable across re-renders of this
-  // component for the lifetime of this invoice page.
+  // One Stripe.js load per distinct key/account pair — stable across
+  // re-renders of this component for the lifetime of this invoice page.
   const stripePromise = useMemo(
-    () => (publishableKey ? loadStripe(publishableKey) : null),
-    [publishableKey],
+    () => (publishableKey && stripeAccount ? loadStripe(publishableKey, { stripeAccount }) : null),
+    [publishableKey, stripeAccount],
   );
 
   if (!stripePromise) {

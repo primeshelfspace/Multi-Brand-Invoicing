@@ -1,41 +1,18 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { ApiError, saveStripeCredentials, testStripeConnection } from '@/lib/api';
+import { ApiError, disconnectStripe } from '@/lib/api';
 
 export interface StripeFormState {
   readonly error?: string;
 }
 
-export async function saveStripeCredentialsAction(
-  _prevState: StripeFormState,
-  formData: FormData,
-): Promise<StripeFormState> {
-  const brandId = formData.get('brandId');
-  if (typeof brandId !== 'string' || !brandId) return { error: 'No brand selected.' };
-
-  const secretKey = String(formData.get('secretKey') ?? '').trim();
-  const publishableKey = String(formData.get('publishableKey') ?? '').trim();
-  const webhookSecret = String(formData.get('webhookSecret') ?? '').trim();
-
-  if (!secretKey || !publishableKey || !webhookSecret) {
-    return { error: 'All three fields are required.' };
-  }
-
-  try {
-    // The API itself calls Stripe to confirm the secret key actually works
-    // before it ever gets encrypted and stored — a typo surfaces here, not on
-    // a customer's payment attempt later.
-    await saveStripeCredentials(brandId, { secretKey, publishableKey, webhookSecret });
-  } catch (error) {
-    if (error instanceof ApiError) return { error: error.message };
-    return { error: error instanceof Error ? error.message : 'Could not save these credentials.' };
-  }
-
-  redirect(`/settings/payment-methods?brandId=${brandId}&stripeSaved=1`);
-}
-
-export async function testStripeConnectionAction(
+/**
+ * Connecting is a plain link to the API rather than an action — the API answers
+ * with a redirect to Stripe's consent screen, which the browser has to follow
+ * itself. Disconnecting is the only side effect this screen still owns.
+ */
+export async function disconnectStripeAction(
   _prevState: StripeFormState,
   formData: FormData,
 ): Promise<StripeFormState> {
@@ -43,11 +20,13 @@ export async function testStripeConnectionAction(
   if (typeof brandId !== 'string' || !brandId) return { error: 'No brand selected.' };
 
   try {
-    await testStripeConnection(brandId);
+    await disconnectStripe(brandId);
   } catch (error) {
     if (error instanceof ApiError) return { error: error.message };
-    return { error: error instanceof Error ? error.message : 'Could not test this connection.' };
+    return {
+      error: error instanceof Error ? error.message : 'Could not disconnect this Stripe account.',
+    };
   }
 
-  redirect(`/settings/payment-methods?brandId=${brandId}&stripeTested=1`);
+  redirect(`/settings/payment-methods?brandId=${brandId}&stripeDisconnected=1`);
 }

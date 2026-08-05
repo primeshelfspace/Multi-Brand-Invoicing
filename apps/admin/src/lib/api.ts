@@ -463,41 +463,37 @@ export function updatePaymentMethodSettings(
   });
 }
 
-// --- Stripe account (multi-tenant: one Stripe account per brand) -------------
+// --- Stripe Connect (one connected account per brand) ------------------------
 
 export interface StripeAccountStatus {
   connected: boolean;
-  /** Safe to display — publishable keys are not secret. */
-  publishableKey: string | null;
+  /** The connected account id (acct_…). Not a secret. */
+  accountId: string | null;
+  /** What Stripe knows this business as; null until Stripe onboarding finishes. */
+  displayName: string | null;
+  /** False while Stripe is still collecting details — linked, but cannot yet
+   * accept a live charge. */
+  chargesEnabled: boolean;
 }
 
 export function getStripeAccountStatus(brandId: string): Promise<StripeAccountStatus> {
   return apiFetch<StripeAccountStatus>(`/brands/${brandId}/integrations/stripe/status`);
 }
 
-export interface StripeCredentialsFormInput {
-  secretKey: string;
-  publishableKey: string;
-  webhookSecret: string;
+/**
+ * Where to send the browser to start the Connect handshake. A full-page
+ * navigation to the API, not a fetch: the API answers with a redirect to
+ * Stripe's consent screen, which the browser must follow itself.
+ */
+export function stripeConnectUrl(brandId: string): string {
+  return `${API_URL}/brands/${brandId}/integrations/stripe/connect`;
 }
 
-/** The API validates the secret key against Stripe itself before saving — a
- * bad key comes back as a 400 with Stripe's own rejection message. */
-export function saveStripeCredentials(
-  brandId: string,
-  input: StripeCredentialsFormInput,
-): Promise<StripeAccountStatus> {
-  return apiFetch<StripeAccountStatus>(`/brands/${brandId}/integrations/stripe/credentials`, {
-    method: 'PUT',
-    body: JSON.stringify(input),
+/** Revokes the platform's authorisation at Stripe and clears the connection. */
+export function disconnectStripe(brandId: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/stripe/disconnect`, {
+    method: 'POST',
   });
-}
-
-/** Re-verifies whatever is currently saved against Stripe — useful once the
- * secret key field has gone blank again (write-only) and there is nothing
- * left on screen to re-check by eye. */
-export function testStripeConnection(brandId: string): Promise<{ ok: true }> {
-  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/stripe/test`, { method: 'POST' });
 }
 
 // --- Zoho integration (FR-ZHO) ------------------------------------------------

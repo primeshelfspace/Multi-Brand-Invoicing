@@ -218,6 +218,7 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
     return (
       <StripeCardForm
         publishableKey={invoice.stripePublishableKey}
+        stripeAccount={invoice.stripeAccountId}
         clientSecret={step.clientSecret}
         returnUrl={typeof window !== 'undefined' ? window.location.href : ''}
         onSucceeded={() => setStep({ kind: 'success' })}

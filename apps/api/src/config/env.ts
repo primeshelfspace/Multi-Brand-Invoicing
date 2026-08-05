@@ -58,10 +58,30 @@ const envSchema = z
     NUMBERS_API_KEY: z.string().optional(),
     NUMBERS_WEBHOOK_SECRET: z.string().optional(),
 
-    // No STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET here: Stripe is multi-tenant
-    // — each brand's own keys live encrypted in IntegrationConnection (see
-    // StripeAccountService), not a single global credential. PAYMENT_GATEWAY_DRIVER
-    // still selects which adapter class runs; it no longer implies a shared secret.
+    // Stripe Connect (Standard, OAuth). These are the PLATFORM's own
+    // credentials, and there is exactly one set — the inverse of the previous
+    // arrangement, where each brand pasted its own secret key and webhook
+    // secret and this file deliberately held none.
+    //
+    // Connect makes that inversion a simplification rather than a regression:
+    // a brand authorises the platform instead of handing over a key, so the
+    // only per-brand fact left is its account id (acct_…), which is not a
+    // secret and lives in IntegrationConnection.config. The platform never
+    // holds a credential capable of acting on a brand's account outside the
+    // authorisation it granted, and revoking is a Stripe-side action the brand
+    // controls. See StripeAccountService.
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+    /** The Connect application id (ca_…) from the platform's Stripe settings. */
+    STRIPE_CONNECT_CLIENT_ID: z.string().optional(),
+    /** Must exactly match a redirect URI registered on the Connect application. */
+    STRIPE_CONNECT_REDIRECT_URI: z.string().optional(),
+    /**
+     * One endpoint secret for the whole platform. Connected-account events all
+     * arrive at a single endpoint carrying `account: acct_…`, so there is no
+     * longer a per-brand signing secret to collect or rotate.
+     */
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
     ZOHO_CLIENT_ID: z.string().optional(),
     ZOHO_CLIENT_SECRET: z.string().optional(),
@@ -91,6 +111,14 @@ const envSchema = z
       require(env.NUMBERS_API_BASE_URL, 'NUMBERS_API_BASE_URL', 'when PAYMENT_GATEWAY_DRIVER=numbers');
       require(env.NUMBERS_API_KEY, 'NUMBERS_API_KEY', 'when PAYMENT_GATEWAY_DRIVER=numbers');
       require(env.NUMBERS_WEBHOOK_SECRET, 'NUMBERS_WEBHOOK_SECRET', 'when PAYMENT_GATEWAY_DRIVER=numbers');
+    }
+    if (env.PAYMENT_GATEWAY_DRIVER === 'stripe') {
+      const because = 'when PAYMENT_GATEWAY_DRIVER=stripe';
+      require(env.STRIPE_SECRET_KEY, 'STRIPE_SECRET_KEY', because);
+      require(env.STRIPE_PUBLISHABLE_KEY, 'STRIPE_PUBLISHABLE_KEY', because);
+      require(env.STRIPE_CONNECT_CLIENT_ID, 'STRIPE_CONNECT_CLIENT_ID', because);
+      require(env.STRIPE_CONNECT_REDIRECT_URI, 'STRIPE_CONNECT_REDIRECT_URI', because);
+      require(env.STRIPE_WEBHOOK_SECRET, 'STRIPE_WEBHOOK_SECRET', because);
     }
     if (env.ACCOUNTING_DRIVER === 'zoho') {
       require(env.ZOHO_CLIENT_ID, 'ZOHO_CLIENT_ID', 'when ACCOUNTING_DRIVER=zoho');

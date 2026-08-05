@@ -142,28 +142,10 @@ export const paymentMethodSettingsSchema = z.object({
 });
 export type PaymentMethodSettingsInput = z.infer<typeof paymentMethodSettingsSchema>;
 
-// --- Stripe account (per-brand credentials) ---------------------------------
-
-/**
- * Prefix checks catch a pasted-wrong-field mistake (e.g. a secret key in the
- * publishable field) before it round-trips to Stripe and back as a confusing
- * API error. Not a substitute for testConnection actually calling Stripe.
- */
-export const stripeCredentialsSchema = z.object({
-  secretKey: z
-    .string()
-    .trim()
-    .regex(/^sk_(test|live)_\w+$/, 'must be a Stripe secret key (sk_test_... or sk_live_...)'),
-  publishableKey: z
-    .string()
-    .trim()
-    .regex(/^pk_(test|live)_\w+$/, 'must be a Stripe publishable key (pk_test_... or pk_live_...)'),
-  webhookSecret: z
-    .string()
-    .trim()
-    .regex(/^whsec_\w+$/, 'must be a Stripe webhook signing secret (whsec_...)'),
-});
-export type StripeCredentialsInput = z.infer<typeof stripeCredentialsSchema>;
+// Stripe has no schema here: under Connect a brand authorises the platform on
+// Stripe's own consent screen rather than submitting credentials, so there is
+// no request body to validate. The resulting account id is read from Stripe's
+// OAuth response, never from a client.
 
 // --- Customer --------------------------------------------------------------
 

@@ -34,10 +34,14 @@ export interface PublicInvoice {
     ach: boolean;
     check: boolean;
   };
-  /** This brand's own Stripe publishable key (multi-tenant Stripe) — never a
-   * key shared across brands, and never baked into this app's build. Null if
-   * the brand has not connected Stripe yet. */
+  /** The platform's Stripe publishable key. Served by the API rather than baked
+   * into this app's build, so it stays a deployment concern rather than a
+   * rebuild. Null if this deployment has no Stripe configured. */
   stripePublishableKey: string | null;
+  /** This brand's connected account (acct_…), passed to Stripe.js alongside the
+   * key above so Elements confirms against the right account (Stripe Connect).
+   * Null if the brand has not completed the connect flow. */
+  stripeAccountId: string | null;
 }
 
 export type InvoiceLookup =

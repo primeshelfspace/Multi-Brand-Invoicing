@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import {
   IntegrationError,
@@ -12,18 +12,18 @@ import {
   type RefundInput,
   type RefundResult,
 } from '@fenwick/shared';
+import { ENV, type Env } from '../../config/env.js';
 import { StripeAccountService } from '../../integrations/stripe-account.service.js';
-
-const STRIPE_API_VERSION = '2025-02-24.acacia';
 
 /**
  * StripeGatewayAdapter — real PaymentGatewayPort implementation (TDD-001 §10.2).
  *
- * Multi-tenant: there is no single Stripe account for this adapter to hold.
- * Every method resolves the calling brand's own encrypted credentials via
- * StripeAccountService and builds a fresh Stripe client from them — brand A's
- * payments are only ever created, captured, refunded or settled against
- * brand A's own Stripe account.
+ * Multi-tenant via Stripe Connect (Standard). There is no per-brand secret key
+ * for this adapter to hold: every method runs under the PLATFORM's client with
+ * `{ stripeAccount }` set to the brand's connected account, which is what keeps
+ * brand A's payments created, captured, refunded and settled strictly against
+ * brand A's own Stripe account. The brand grants that access through Stripe's
+ * consent screen and can revoke it from its own dashboard.
  *
  * Card data never reaches this process: the payment page collects it via
  * Stripe Elements client-side and confirms the PaymentIntent directly against
@@ -38,14 +38,17 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
 
   private readonly logger = new Logger(StripeGatewayAdapter.name);
 
-  constructor(private readonly stripeAccounts: StripeAccountService) {}
+  constructor(
+    private readonly stripeAccounts: StripeAccountService,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
 
   async createIntent(input: CreateIntentInput): Promise<PaymentIntent> {
-    const stripe = await this.clientFor(input.brandId);
+    const stripeAccount = await this.accountFor(input.brandId);
     const paymentMethodTypes = this.paymentMethodTypesFor(input);
 
     try {
-      const pi = await stripe.paymentIntents.create(
+      const pi = await this.platform().paymentIntents.create(
         {
           amount: input.amountMinor,
           currency: input.currency.toLowerCase(),
@@ -58,7 +61,7 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
             ...input.metadata,
           },
         },
-        { idempotencyKey: input.idempotencyKey },
+        { idempotencyKey: input.idempotencyKey, stripeAccount },
       );
 
       return this.toPaymentIntent(pi, input.currency);
@@ -68,12 +71,12 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   }
 
   async capture(input: CaptureInput): Promise<PaymentIntent> {
-    const stripe = await this.clientFor(input.brandId);
+    const stripeAccount = await this.accountFor(input.brandId);
     try {
-      const pi = await stripe.paymentIntents.capture(
+      const pi = await this.platform().paymentIntents.capture(
         input.gatewayReference,
         input.amountMinor === undefined ? undefined : { amount_to_capture: input.amountMinor },
-        { idempotencyKey: input.idempotencyKey },
+        { idempotencyKey: input.idempotencyKey, stripeAccount },
       );
       return this.toPaymentIntent(pi, pi.currency.toUpperCase() as CurrencyCode);
     } catch (error) {
@@ -82,15 +85,15 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   }
 
   async refund(input: RefundInput): Promise<RefundResult> {
-    const stripe = await this.clientFor(input.brandId);
+    const stripeAccount = await this.accountFor(input.brandId);
     try {
-      const refund = await stripe.refunds.create(
+      const refund = await this.platform().refunds.create(
         {
           payment_intent: input.gatewayReference,
           amount: input.amountMinor,
           reason: this.mapRefundReason(input.reason),
         },
-        { idempotencyKey: input.idempotencyKey },
+        { idempotencyKey: input.idempotencyKey, stripeAccount },
       );
       return {
         refundReference: refund.id,
@@ -109,9 +112,11 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   }
 
   async void(gatewayReference: string, brandId: string): Promise<PaymentIntent> {
-    const stripe = await this.clientFor(brandId);
+    const stripeAccount = await this.accountFor(brandId);
     try {
-      const pi = await stripe.paymentIntents.cancel(gatewayReference);
+      const pi = await this.platform().paymentIntents.cancel(gatewayReference, undefined, {
+        stripeAccount,
+      });
       return this.toPaymentIntent(pi, pi.currency.toUpperCase() as CurrencyCode);
     } catch (error) {
       throw this.wrap(error, 'void');
@@ -119,44 +124,45 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   }
 
   async retrieve(gatewayReference: string, brandId: string): Promise<PaymentIntent> {
-    const stripe = await this.clientFor(brandId);
+    const stripeAccount = await this.accountFor(brandId);
     try {
-      const pi = await stripe.paymentIntents.retrieve(gatewayReference);
+      const pi = await this.platform().paymentIntents.retrieve(gatewayReference, undefined, {
+        stripeAccount,
+      });
       return this.toPaymentIntent(pi, pi.currency.toUpperCase() as CurrencyCode);
     } catch (error) {
       throw this.wrap(error, 'retrieve');
     }
   }
 
+  /**
+   * One signing secret for the whole platform. Under Connect every connected
+   * account's events arrive at a single endpoint, so `brandId` is null here and
+   * a valid signature proves only that Stripe sent this — not which tenant it
+   * concerns. That second question is answered by resolveBrandId below, and the
+   * two together are what the old per-brand secret used to establish alone.
+   */
   async verifySignature(
     payload: string | Buffer,
     headers: Readonly<Record<string, string>>,
-    brandId: string | null,
+    _brandId: string | null,
   ): Promise<boolean> {
     const signature = headers['stripe-signature'] ?? headers['Stripe-Signature'];
-    if (!signature || !brandId) return false;
+    if (!signature) return false;
 
-    const credentials = await this.stripeAccounts.getCredentialsForGateway(brandId);
-    if (!credentials) {
-      this.logger.warn(
-        `webhook received for brand ${brandId}, which has no Stripe account configured`,
-      );
+    const webhookSecret = this.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      this.logger.error('STRIPE_WEBHOOK_SECRET is not configured — refusing every webhook');
       return false;
     }
 
     try {
-      // A brand-scoped client purely to reuse the SDK's constructEvent — this
-      // call makes no network request.
-      new Stripe(credentials.secretKey, { apiVersion: STRIPE_API_VERSION }).webhooks.constructEvent(
-        payload,
-        signature,
-        credentials.webhookSecret,
-      );
+      // constructEvent makes no network request, so the client here is just a
+      // vehicle for the SDK's own signature verification.
+      this.platform().webhooks.constructEvent(payload, signature, webhookSecret);
       return true;
     } catch (error) {
-      this.logger.warn(
-        `stripe webhook signature rejected for brand ${brandId}: ${(error as Error).message}`,
-      );
+      this.logger.warn(`stripe webhook signature rejected: ${(error as Error).message}`);
       return false;
     }
   }
@@ -164,8 +170,8 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
   /**
    * Called only after verifySignature has already checked the signature —
    * re-deriving the event here is just a JSON parse, not a second trust check.
-   * `brandId` is accepted for interface symmetry with verifySignature; parsing
-   * the already-verified payload needs no further per-brand lookup.
+   * `brandId` is accepted for interface symmetry; the tenant now comes off the
+   * event's own `account` field instead.
    */
   parseWebhook(payload: string | Buffer, _brandId: string | null): GatewayWebhookEvent {
     const event = JSON.parse(payload.toString()) as Stripe.Event;
@@ -184,20 +190,38 @@ export class StripeGatewayAdapter implements PaymentGatewayPort {
       occurredAt: new Date(event.created * 1000),
       declineReason:
         'last_payment_error' in object ? (object.last_payment_error?.message ?? null) : null,
+      // Present on connected-account events; absent on events about the
+      // platform's own account, which this system has no payments under.
+      accountRef: event.account ?? null,
       raw: event,
     };
   }
 
-  private async clientFor(brandId: string): Promise<Stripe> {
-    const credentials = await this.stripeAccounts.getCredentialsForGateway(brandId);
-    if (!credentials) {
+  /** Maps the connected account an event came from back to the brand that
+   * authorised it. Null when the event carries no account, or names one no
+   * brand has connected — the caller treats either as "cannot attribute" and
+   * declines to settle rather than guessing. */
+  async resolveBrandId(event: GatewayWebhookEvent): Promise<string | null> {
+    if (!event.accountRef) return null;
+    return this.stripeAccounts.findBrandIdByAccountId(event.accountRef);
+  }
+
+  private platform(): Stripe {
+    return this.stripeAccounts.platformClient();
+  }
+
+  /** The connected account every request for this brand must be made against.
+   * Absent means the brand never completed the Connect flow. */
+  private async accountFor(brandId: string): Promise<string> {
+    const accountId = await this.stripeAccounts.getAccountIdForBrand(brandId);
+    if (!accountId) {
       throw new IntegrationError({
-        message: `Stripe is not configured for brand ${brandId}`,
+        message: `Stripe is not connected for brand ${brandId}`,
         errorClass: 'VALIDATION',
         provider: this.providerName,
       });
     }
-    return new Stripe(credentials.secretKey, { apiVersion: STRIPE_API_VERSION });
+    return accountId;
   }
 
   private paymentMethodTypesFor(input: CreateIntentInput): string[] {

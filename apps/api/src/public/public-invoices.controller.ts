@@ -74,27 +74,24 @@ export class PublicInvoicesController {
   }
 
   /**
-   * Multi-tenant Stripe: each brand's Stripe account is configured (in that
-   * Stripe dashboard, or via the Stripe API using that brand's own secret
-   * key) with its own webhook endpoint pointing here, one per brand — this
-   * is what lets PaymentsService.handleWebhook look up the right brand's
-   * webhook secret before it can verify anything.
+   * One endpoint for every brand (Stripe Connect). Connected-account events all
+   * arrive here, signed with the single platform webhook secret and tagged with
+   * the account they came from, so there is no per-brand URL to register and no
+   * per-brand signing secret to collect. PaymentsService.handleWebhook maps that
+   * account back to a brand before settling anything — see its comment for why
+   * the signature alone is no longer sufficient to establish tenancy.
+   *
+   * Register this once, in the platform's own Stripe dashboard, listening to
+   * events "on connected accounts".
    */
-  @Post('webhooks/stripe/:brandId')
+  @Post('webhooks/stripe')
   @Public()
   @HttpCode(200)
-  async stripeWebhook(
-    @Param('brandId', zodPipe(idSchema)) brandId: string,
-    @Req() request: RawBodyRequest<Request>,
-  ): Promise<{ received: true }> {
+  async stripeWebhook(@Req() request: RawBodyRequest<Request>): Promise<{ received: true }> {
     if (!request.rawBody) {
       throw new BadRequestException('missing request body');
     }
-    await this.payments.handleWebhook(
-      request.rawBody,
-      request.headers as Record<string, string>,
-      brandId,
-    );
+    await this.payments.handleWebhook(request.rawBody, request.headers as Record<string, string>);
     return { received: true };
   }
 }
