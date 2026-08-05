@@ -4,9 +4,9 @@
   "private": true,
   "description": "Public payment application. Anonymous, hardened, minimal dependency tree.",
   "scripts": {
-    "dev": "node ../../scripts/with-env.mjs next dev --port ${PAYMENT_PORT:-3001}",
+    "dev": "node ../../scripts/with-env.mjs next dev --port '${PAYMENT_PORT:-3001}'",
     "build": "next build",
-    "start": "next start --port ${PAYMENT_PORT:-3001}",
+    "start": "next start --port '${PAYMENT_PORT:-3001}'",
     "typecheck": "tsc --noEmit",
     "lint": "next lint"
   },

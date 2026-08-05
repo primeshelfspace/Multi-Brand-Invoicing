@@ -42,7 +42,16 @@ function parseValue(raw) {
   return comment === -1 ? value : value.slice(0, comment).trim();
 }
 
-/** Expands bash-style ${VAR:-default} tokens, since Windows shells don't. */
+/**
+ * Expands bash-style ${VAR:-default} tokens.
+ *
+ * The call sites must single-quote these in package.json, or a POSIX shell
+ * expands them itself before this process starts — and it expands them against
+ * the ambient environment, which does NOT yet contain .env (that is loaded
+ * above, inside this process). The token would silently resolve to the
+ * default, so `ADMIN_PORT` in .env was ignored on macOS and Linux while
+ * appearing to work.
+ */
 function expandDefault(arg) {
   return arg.replace(
     /\$\{([A-Z_][A-Z0-9_]*):-([^}]*)\}/g,
