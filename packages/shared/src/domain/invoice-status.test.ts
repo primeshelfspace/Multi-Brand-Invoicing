@@ -62,8 +62,10 @@ describe('FIRST_VIEW', () => {
 });
 
 describe('INITIATE_PAYMENT', () => {
-  it('is allowed from SENT, VIEWED and PARTIALLY_PAID', () => {
-    for (const status of ['SENT', 'VIEWED', 'PARTIALLY_PAID'] as const) {
+  it('is allowed from SENT, VIEWED, PARTIALLY_PAID, and PENDING_PAYMENT', () => {
+    // PENDING_PAYMENT is included so an abandoned or reloaded attempt can
+    // always be retried, not just the first one — see the ALLOWED comment.
+    for (const status of ['SENT', 'VIEWED', 'PARTIALLY_PAID', 'PENDING_PAYMENT'] as const) {
       expect(evaluateTransition('INITIATE_PAYMENT', { ...base, status })).toEqual({
         ok: true,
         to: 'PENDING_PAYMENT',

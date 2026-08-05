@@ -47,7 +47,14 @@ export type InvoiceTransition = (typeof INVOICE_TRANSITIONS)[number];
 const ALLOWED: Record<InvoiceTransition, ReadonlySet<InvoiceStatus>> = {
   ISSUE: new Set<InvoiceStatus>(['DRAFT']),
   FIRST_VIEW: new Set<InvoiceStatus>(['SENT']),
-  INITIATE_PAYMENT: new Set<InvoiceStatus>(['SENT', 'VIEWED', 'PARTIALLY_PAID']),
+  // PENDING_PAYMENT is included so a customer who abandons a card form (or
+  // simply reloads the page) can start a fresh attempt instead of being
+  // permanently stuck — the ALREADY_SETTLED guard below still refuses this
+  // once the balance actually clears, and a second concurrent attempt
+  // settling can never double-pay: SETTLE_FULL/PARTIAL are not reachable
+  // from PAID, so whichever attempt settles first wins and the other is
+  // refused at the transition level, not merely by convention.
+  INITIATE_PAYMENT: new Set<InvoiceStatus>(['SENT', 'VIEWED', 'PARTIALLY_PAID', 'PENDING_PAYMENT']),
   SETTLE_PARTIAL: new Set<InvoiceStatus>(['PENDING_PAYMENT', 'PARTIALLY_PAID']),
   SETTLE_FULL: new Set<InvoiceStatus>(['PENDING_PAYMENT', 'PARTIALLY_PAID']),
   PAYMENT_FAILED: new Set<InvoiceStatus>(['PENDING_PAYMENT']),

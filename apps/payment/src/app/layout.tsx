@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -8,7 +9,19 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Reading the nonce here (not just setting it in middleware) is the other
+ * half of the CSP contract in middleware.ts: Next only threads a nonce onto
+ * its own generated script tags — the inline bootstrap script hydration
+ * itself depends on — when a Server Component up the tree actually calls
+ * `headers()` to read it. Skipped, `'strict-dynamic'` still applies (which
+ * makes browsers ignore the `'self'` fallback), so those scripts end up with
+ * no valid nonce at all: CSP silently blocks them, React never hydrates, and
+ * every button on every page becomes inert with no visible error.
+ */
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await headers();
+
   return (
     <html lang="en">
       <body className="min-h-full">{children}</body>

@@ -37,23 +37,60 @@ function quotedTotalFor(invoice: PublicInvoice, method: Method): number {
   return preFee + Math.round(preFee * (invoice.cardFeeRateBp / 10_000));
 }
 
-function availableMethods(
-  invoice: PublicInvoice,
-): Array<{ key: Method; label: string; quotedTotalMinor: number }> {
-  const methods: Array<{ key: Method; label: string; quotedTotalMinor: number }> = [];
+interface MethodOption {
+  /** Unique per button — several options can submit the same apiMethod
+   * (Credit/debit card and Stripe both mean CARD), so this can't double as
+   * the React list key the way apiMethod alone used to. */
+  readonly id: string;
+  readonly apiMethod: Method;
+  readonly label: string;
+  readonly quotedTotalMinor: number;
+}
+
+function availableMethods(invoice: PublicInvoice): MethodOption[] {
+  const methods: MethodOption[] = [];
   if (invoice.enabledMethods.card) {
-    methods.push({ key: 'CARD', label: 'Credit or debit card', quotedTotalMinor: quotedTotalFor(invoice, 'CARD') });
+    methods.push({
+      id: 'card',
+      apiMethod: 'CARD',
+      label: 'Credit or debit card',
+      quotedTotalMinor: quotedTotalFor(invoice, 'CARD'),
+    });
+    // Same PaymentIntent/Stripe Elements flow as the button above — this is
+    // a second, explicitly Stripe-branded entry point to it, not a second
+    // payment method at the domain level (there is only one CARD method).
+    methods.push({
+      id: 'stripe',
+      apiMethod: 'CARD',
+      label: 'Stripe',
+      quotedTotalMinor: quotedTotalFor(invoice, 'CARD'),
+    });
   }
   if (invoice.enabledMethods.applePay) {
-    methods.push({ key: 'WALLET', label: 'Apple Pay', quotedTotalMinor: quotedTotalFor(invoice, 'WALLET') });
+    methods.push({
+      id: 'apple-pay',
+      apiMethod: 'WALLET',
+      label: 'Apple Pay',
+      quotedTotalMinor: quotedTotalFor(invoice, 'WALLET'),
+    });
   }
   if (invoice.enabledMethods.googlePay && !invoice.enabledMethods.applePay) {
     // Only one WALLET button is meaningful — Apple Pay's label wins if both
     // are on, since the API cannot distinguish which wallet was actually used.
-    methods.push({ key: 'WALLET', label: 'Google Pay', quotedTotalMinor: quotedTotalFor(invoice, 'WALLET') });
+    methods.push({
+      id: 'google-pay',
+      apiMethod: 'WALLET',
+      label: 'Google Pay',
+      quotedTotalMinor: quotedTotalFor(invoice, 'WALLET'),
+    });
   }
   if (invoice.enabledMethods.ach) {
-    methods.push({ key: 'ACH', label: 'Bank transfer (ACH)', quotedTotalMinor: quotedTotalFor(invoice, 'ACH') });
+    methods.push({
+      id: 'ach',
+      apiMethod: 'ACH',
+      label: 'Bank transfer (ACH)',
+      quotedTotalMinor: quotedTotalFor(invoice, 'ACH'),
+    });
   }
   return methods;
 }
@@ -187,9 +224,9 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
     <div className="mt-6 space-y-2">
       {methods.map((m) => (
         <button
-          key={m.key}
+          key={m.id}
           type="button"
-          onClick={() => submitPayment(m.key)}
+          onClick={() => submitPayment(m.apiMethod)}
           className="flex w-full items-center justify-between rounded-md border border-border bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-strong hover:bg-surface-muted"
         >
           <span>{m.label}</span>
