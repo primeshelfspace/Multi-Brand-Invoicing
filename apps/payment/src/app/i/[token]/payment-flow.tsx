@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatMinorForDisplay } from '@fenwick/shared/money';
+import { applyBasisPoints, formatMinorForDisplay } from '@fenwick/shared/money';
 import type { PublicInvoice } from '@/lib/invoice';
 import { StripeCardForm } from './stripe-card-form';
 
@@ -30,11 +30,22 @@ type Step =
  * needs domain verification with Apple and a registered Google Pay merchant
  * ID, neither of which exist yet.
  */
-/** CARD and WALLET carry the card fee (TDD-001 §9.2); ACH never does. */
+/**
+ * CARD and WALLET carry the card fee (TDD-001 §9.2); ACH never does.
+ *
+ * The fee goes through applyBasisPoints — the same primitive CalculationService
+ * uses server-side — rather than a local `Math.round(preFee * rate / 10_000)`.
+ * That float form rounds half toward +Infinity on a value that has already lost
+ * precision to IEEE-754, where applyBasisPoints multiplies in BigInt and rounds
+ * half away from zero. The two disagree by a minor unit on exact halves, which
+ * is the amount the customer is about to be charged: PaymentsService quotes
+ * this attempt independently, so a mismatch here shows one figure on the button
+ * and charges another (NFR-INT-001).
+ */
 function quotedTotalFor(invoice: PublicInvoice, method: Method): number {
   if (method === 'ACH') return invoice.balanceMinor;
   const preFee = invoice.subtotalMinor + invoice.taxMinor;
-  return preFee + Math.round(preFee * (invoice.cardFeeRateBp / 10_000));
+  return preFee + applyBasisPoints(preFee, invoice.cardFeeRateBp);
 }
 
 interface MethodOption {
@@ -162,7 +173,9 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
   if (step.kind === 'failure') {
     return (
       <div className="mt-6">
-        <p className="text-center text-sm font-medium text-danger">Payment couldn&rsquo;t be processed</p>
+        <p className="text-center text-sm font-medium text-danger">
+          Payment couldn&rsquo;t be processed
+        </p>
         {step.reason && <p className="mt-1 text-center text-xs text-ink-muted">{step.reason}</p>}
         <button
           type="button"
@@ -178,7 +191,9 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
   if (step.kind === 'error') {
     return (
       <div className="mt-6 text-center">
-        <p className="text-sm font-medium text-danger">We couldn&rsquo;t reach the payment service</p>
+        <p className="text-sm font-medium text-danger">
+          We couldn&rsquo;t reach the payment service
+        </p>
         <p className="mt-1 text-xs text-ink-muted">{step.message}</p>
         <button
           type="button"

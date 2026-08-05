@@ -66,12 +66,18 @@ async function bootstrap(): Promise<void> {
         'scheduled-sync: listing brands with a live Zoho connection',
         (client) =>
           client.integrationConnection.findMany({
-            where: { provider: 'ZOHO_BOOKS', status: 'CONNECTED', encryptedCredentials: { not: null } },
+            where: {
+              provider: 'ZOHO_BOOKS',
+              status: 'CONNECTED',
+              encryptedCredentials: { not: null },
+            },
             select: { brandId: true },
           }),
       );
       await Promise.all(
-        connectedBrandIds.map(({ brandId }) => queue.enqueue('sync', 'zoho-pull-brand', { brandId })),
+        connectedBrandIds.map(({ brandId }) =>
+          queue.enqueue('sync', 'zoho-pull-brand', { brandId }),
+        ),
       );
       return { brandsEnqueued: connectedBrandIds.length };
     },
@@ -84,7 +90,14 @@ async function bootstrap(): Promise<void> {
       async (job) => {
         const handler = handlers[name]?.[job.name];
         if (!handler) {
-          throw new Error(`no handler registered for ${name}/${job.name}`);
+          // Still a hard failure — a silently acknowledged payment event is the
+          // worst outcome available here. For a repeatable, reaching this means
+          // queues.ts and this file disagree: mark the job `implemented: false`
+          // there (which also sweeps it out of Redis) or add its handler below.
+          throw new Error(
+            `no handler registered for ${name}/${job.name} — ` +
+              'add one here, or set implemented: false in queues.ts if it is a scheduled job',
+          );
         }
         return handler(job);
       },
