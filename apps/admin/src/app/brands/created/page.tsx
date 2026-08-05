@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { LogoMark } from '@/components/logo-mark';
+import { listBrands } from '@/lib/api';
 import { requireOnboardingComplete } from '@/lib/onboarding';
 
 export const dynamic = 'force-dynamic';
@@ -8,20 +9,25 @@ export const dynamic = 'force-dynamic';
 /**
  * Reached right after the single-brand-structure choice creates one brand
  * from the staged company details. Onboarding is complete the instant that
- * happens, so this page is only meaningfully reachable once — a `name` in
- * the query string is the signal that this is that moment rather than a
- * stale bookmark found later, which goes to the dashboard instead.
+ * happens, so this page is only meaningfully reachable once in the sense
+ * that matters — an `id` in the query string names which brand this
+ * celebrates, and it has to actually belong to this merchant. That is what
+ * keeps a stale bookmark, a hand-edited query string, or the query string
+ * simply missing from rendering anything at all; all three fall through to
+ * the dashboard instead. Looking the brand up rather than trusting whatever
+ * the query string claims also means the real logo (if one was uploaded
+ * during Company Details) shows here, not just the name.
  */
 export default async function BrandCreatedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ name?: string }>;
+  searchParams: Promise<{ id?: string }>;
 }) {
   await requireOnboardingComplete();
 
   const params = await searchParams;
-  if (!params.name) redirect('/');
-  const brandName = params.name;
+  const brand = params.id ? (await listBrands()).find((b) => b.id === params.id) : undefined;
+  if (!brand) redirect('/');
 
   return (
     <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
@@ -36,9 +42,20 @@ export default async function BrandCreatedPage({
         </div>
 
         <div className="flex items-center gap-4 rounded-[14px] bg-[#F1F5F9] p-5">
-          <LogoMark size={48} />
+          {brand.logoUrl ? (
+            // The brand's own uploaded logo, not the product mark — this is
+            // the one onboarding screen where a brand already exists.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={brand.logoUrl}
+              alt=""
+              className="h-12 w-12 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <LogoMark size={48} />
+          )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-base font-bold text-[#0F172A]">{brandName}</p>
+            <p className="truncate text-base font-bold text-[#0F172A]">{brand.displayName}</p>
             <p className="text-sm text-[#64748B]">Default brand</p>
           </div>
           <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">

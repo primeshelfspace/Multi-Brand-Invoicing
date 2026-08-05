@@ -1,7 +1,7 @@
 import { listBrands } from '@/lib/api';
 import { requireOnboardingStep } from '@/lib/onboarding';
 import { AddBrandForm } from './add-brand-form';
-import { finishMultiBrandSetupAction } from './actions';
+import { FinishSetupForm } from './finish-setup-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,21 +44,7 @@ export default async function MultiBrandSetupPage() {
 
         <AddBrandForm />
 
-        <form action={finishMultiBrandSetupAction}>
-          <button
-            type="submit"
-            disabled={brands.length === 0}
-            className="w-full rounded-[10px] bg-black px-4 py-3.5 text-base font-bold text-white
-                       transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black
-                       focus-visible:ring-offset-2"
-          >
-            Finish Setup — Go to Dashboard
-          </button>
-        </form>
-        {brands.length === 0 && (
-          <p className="mt-2 text-center text-sm text-[#64748B]">Add at least one brand to finish.</p>
-        )}
+        <FinishSetupForm hasBrands={brands.length > 0} />
       </div>
     </main>
   );

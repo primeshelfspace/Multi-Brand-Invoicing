@@ -61,7 +61,20 @@ export async function addBrandAction(
   redirect('/brands/multi');
 }
 
-export async function finishMultiBrandSetupAction(): Promise<void> {
-  await completeMultiBrandOnboarding();
+export interface FinishSetupState {
+  readonly error?: string;
+}
+
+export async function finishMultiBrandSetupAction(
+  _prevState: FinishSetupState,
+  _formData: FormData,
+): Promise<FinishSetupState> {
+  try {
+    await completeMultiBrandOnboarding();
+  } catch (error) {
+    if (error instanceof ApiError) return { error: error.message };
+    return { error: error instanceof Error ? error.message : 'Could not finish setup.' };
+  }
+
   redirect('/');
 }

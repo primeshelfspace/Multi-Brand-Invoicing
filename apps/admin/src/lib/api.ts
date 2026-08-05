@@ -182,6 +182,8 @@ export interface Brand {
   themeColor: string;
   currency: string;
   status: 'ACTIVE' | 'ARCHIVED';
+  /** Signed, time-limited URL; null if this brand has no logo uploaded. */
+  logoUrl: string | null;
 }
 
 export function listBrands(): Promise<Brand[]> {

@@ -27,9 +27,12 @@ export async function chooseBrandStructureAction(
   }
 
   // SINGLE returns the one brand it just created from the staged company
-  // details; MULTI returns null and hands off to brand-by-brand setup.
+  // details; MULTI returns null and hands off to brand-by-brand setup. The id
+  // travels in the query string rather than the name — /brands/created looks
+  // the brand up for itself so it always shows the real logo and can't be
+  // made to render arbitrary text someone typed into the URL.
   if (result.brand) {
-    redirect(`/brands/created?name=${encodeURIComponent(result.brand.displayName)}`);
+    redirect(`/brands/created?id=${result.brand.id}`);
   }
   redirect('/brands/multi');
 }

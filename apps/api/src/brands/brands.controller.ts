@@ -20,7 +20,7 @@ import {
 } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
-import { BrandsService, type CreateBrandInput } from './brands.service.js';
+import { BrandsService, type BrandWithLogo, type CreateBrandInput } from './brands.service.js';
 
 /**
  * NOTE for whoever builds brand-scoped screens for Brand Admin / Finance /
@@ -40,7 +40,7 @@ export class BrandsController {
 
   @Get()
   @RequirePermission('BRANDS', 'READ', { brandFrom: 'none' })
-  list(@CurrentScope() scope: Scope): Promise<Brand[]> {
+  list(@CurrentScope() scope: Scope): Promise<BrandWithLogo[]> {
     return this.brands.list(scope);
   }
 

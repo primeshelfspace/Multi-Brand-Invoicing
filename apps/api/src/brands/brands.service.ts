@@ -24,6 +24,8 @@ const LOGO_EXTENSION_BY_MIME: Record<string, string> = {
 
 const LOGO_URL_TTL_SECONDS = 3600;
 
+export type BrandWithLogo = Brand & { readonly logoUrl: string | null };
+
 /**
  * List is gated on BRANDS READ (FRS-001 §3.3: Owner and Merchant Admin only)
  * rather than a lighter "my assignments" read — that is a distinct
@@ -42,10 +44,24 @@ export class BrandsService {
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}
 
-  list(scope: Scope): Promise<Brand[]> {
-    return this.prisma.withScope(scope, (tx) =>
+  async list(scope: Scope): Promise<BrandWithLogo[]> {
+    const brands = await this.prisma.withScope(scope, (tx) =>
       tx.brand.findMany({ orderBy: { createdAt: 'asc' } }),
     );
+    // Signed, not the raw key — logoKey is a storage-internal detail, and a
+    // brand created straight from single-brand onboarding carries one across
+    // from the staged company details before anyone has visited brand
+    // settings, so this has to hold from the very first render, not just
+    // after an explicit re-upload.
+    return Promise.all(brands.map((brand) => this.withLogoUrl(brand)));
+  }
+
+  private async withLogoUrl(brand: Brand): Promise<BrandWithLogo> {
+    if (!brand.logoKey) return { ...brand, logoUrl: null };
+    const logoUrl = await this.storage.getSignedUrl(brand.logoKey, {
+      expiresInSeconds: LOGO_URL_TTL_SECONDS,
+    });
+    return { ...brand, logoUrl };
   }
 
   async create(scope: Scope, input: CreateBrandInput): Promise<Brand> {

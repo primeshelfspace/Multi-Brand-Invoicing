@@ -156,9 +156,9 @@ export function SetPasswordForm({ returnTo }: { returnTo: string }) {
         type="submit"
         disabled={pending}
         className="w-full rounded-[10px] bg-black px-4 py-3.5 text-base font-bold text-white
-                   transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black
-                   focus-visible:ring-offset-2"
+                   transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB]
+                   disabled:text-[#94A3B8] focus-visible:outline-none focus-visible:ring-2
+                   focus-visible:ring-black focus-visible:ring-offset-2"
       >
         {pending ? 'Setting password…' : 'Set Password'}
       </button>

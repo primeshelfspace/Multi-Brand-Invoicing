@@ -129,20 +129,37 @@ export class MerchantService {
    * the whole reason those details were staged on Merchant in the first
    * place rather than requiring the same form twice. MULTI just records the
    * choice; brand-by-brand setup happens on its own screen from here.
+   *
+   * Idempotent by construction: a repeat call — a double-click before the
+   * button's disabled state lands, a browser retry on a slow connection, a
+   * replayed request — must not create a second brand or re-derive a
+   * decision that has already happened. The page guard (requireOnboardingStep)
+   * keeps the form itself from being resubmitted through the UI, but this is
+   * the layer that actually holds if that guard is ever bypassed.
    */
   async chooseBrandStructure(
     scope: Scope,
     structure: 'SINGLE' | 'MULTI',
   ): Promise<CreatedBrandSummary | null> {
-    if (structure === 'MULTI') {
-      await this.prisma.withScope(scope, (tx) =>
-        tx.merchant.update({ where: { id: scope.merchantId }, data: { brandStructure: 'MULTI' } }),
-      );
-      return null;
-    }
-
     return this.prisma.withScope(scope, async (tx) => {
       const merchant = await tx.merchant.findUniqueOrThrow({ where: { id: scope.merchantId } });
+
+      if (merchant.brandStructure === 'SINGLE') {
+        const brand = await tx.brand.findFirst({
+          where: { merchantId: scope.merchantId },
+          orderBy: { createdAt: 'asc' },
+        });
+        return brand ? { id: brand.id, displayName: brand.displayName } : null;
+      }
+      if (merchant.brandStructure === 'MULTI') {
+        return null;
+      }
+
+      if (structure === 'MULTI') {
+        await tx.merchant.update({ where: { id: scope.merchantId }, data: { brandStructure: 'MULTI' } });
+        return null;
+      }
+
       if (!merchant.companyLegalName || !merchant.companyBusinessType) {
         throw new BadRequestException('company details must be completed before choosing single brand');
       }
