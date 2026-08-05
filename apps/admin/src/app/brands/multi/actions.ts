@@ -7,15 +7,10 @@ import {
   createBrand,
   type BrandFormInput,
 } from '@/lib/api';
+import { emptyToNull } from '@/lib/form';
 
 export interface AddBrandState {
   readonly error?: string;
-}
-
-function emptyToNull(value: FormDataEntryValue | null): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
 }
 
 /** No dedicated prefix field on this quick add-a-brand form — derived from

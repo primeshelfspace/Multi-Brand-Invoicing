@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { IntegrationError, type AccountingConnection, type Scope } from '@fenwick/shared';
@@ -290,10 +291,15 @@ export class ZohoPullService {
   }
 
   private randomPublicToken(): string {
-    // Matches InvoicesService.create's own token generation exactly — a
-    // pulled invoice needs the public payment page just as much as one
-    // created locally, and Zoho has no equivalent concept to reuse.
-    return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    // Must match InvoicesService.create exactly, and for the same reason: this
+    // token is the ONLY credential protecting the public payment page
+    // (NFR-SEC-014), and invoice numbers are sequential and guessable. A
+    // Math.random() version of this stood here previously — that is a
+    // non-cryptographic PRNG whose internal state is recoverable from a few
+    // observed outputs, so holding one legitimate payment link would have let
+    // an attacker predict the tokens of every other invoice pulled alongside
+    // it.
+    return randomBytes(16).toString('hex');
   }
 
   // --- Customer payments ---------------------------------------------------
@@ -359,10 +365,17 @@ export class ZohoPullService {
         });
       }
 
+      // Currency follows the invoice this payment settles, never a hardcoded
+      // default — a brand billing in CAD or GBP would otherwise have every
+      // pulled payment recorded as USD against a non-USD invoice.
+      const invoiceCurrency = await this.prisma.withScope(scope, (tx) =>
+        tx.invoice.findUnique({ where: { id: invoiceRow.id }, select: { currency: true } }),
+      );
+
       const data = {
         method: this.zoho.reverseMapPaymentMode(payment.payment_mode),
         amountMinor: BigInt(this.zoho.decimalToMinor(payment.amount)),
-        currency: 'USD',
+        currency: invoiceCurrency?.currency ?? 'USD',
         status: 'SETTLED' as const,
         settledAt: new Date(payment.date),
       };

@@ -251,13 +251,34 @@ export class AuthService {
     const windowStart = new Date(Date.now() - FAILURE_WINDOW_MINUTES * 60_000);
 
     await this.prisma.withoutScope('counting recent sign-in failures for lockout', async (c) => {
+      // "Consecutive" is the whole of FR-AUTH-002, so the count has to start
+      // after the last successful sign-in, not merely at the window edge. A
+      // successful login already clears the failedLogins column, but that
+      // column is not what this decision reads — without this the audit trail
+      // still holds the earlier failures, and a user who mistyped four times,
+      // signed in fine, then fumbled once would be locked out on that single
+      // failure.
+      const lastSuccess = await c.auditLog.findFirst({
+        where: {
+          merchantId,
+          actorId: userId,
+          action: AUDIT_LOGIN,
+          outcome: 'SUCCESS',
+          occurredAt: { gte: windowStart },
+        },
+        orderBy: { occurredAt: 'desc' },
+        select: { occurredAt: true },
+      });
+      const countFrom =
+        lastSuccess && lastSuccess.occurredAt > windowStart ? lastSuccess.occurredAt : windowStart;
+
       const failures = await c.auditLog.count({
         where: {
           merchantId,
           actorId: userId,
           action: AUDIT_LOGIN,
           outcome: 'FAILURE',
-          occurredAt: { gte: windowStart },
+          occurredAt: { gt: countFrom },
         },
       });
 

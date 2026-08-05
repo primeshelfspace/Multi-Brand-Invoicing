@@ -1,8 +1,20 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { idSchema, invoiceDraftSchema, type InvoiceDraftInput, type Scope } from '@fenwick/shared';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  idSchema,
+  invoiceDraftSchema,
+  invoiceListQuerySchema,
+  type InvoiceDraftInput,
+  type InvoiceListQuery,
+  type Scope,
+} from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
-import { InvoicesService, type InvoiceWithLines } from './invoices.service.js';
+import {
+  InvoicesService,
+  type InvoiceListResult,
+  type InvoiceSummary,
+  type InvoiceWithLines,
+} from './invoices.service.js';
 
 /** FR-INV. Nested under the brand, matching CustomersController's convention. */
 @Controller('brands/:brandId/invoices')
@@ -14,8 +26,21 @@ export class InvoicesController {
   list(
     @CurrentScope() scope: Scope,
     @Param('brandId', zodPipe(idSchema)) brandId: string,
-  ): Promise<InvoiceWithLines[]> {
-    return this.invoices.list(scope, brandId);
+    @Query(zodPipe(invoiceListQuerySchema)) query: InvoiceListQuery,
+  ): Promise<InvoiceListResult> {
+    return this.invoices.list(scope, brandId, query);
+  }
+
+  /** Declared before the ':id' route below — Nest matches in declaration
+   * order, and 'summary' would otherwise be swallowed as an invoice id (and
+   * then rejected by idSchema as a malformed UUID). */
+  @Get('summary')
+  @RequirePermission('INVOICES', 'READ')
+  summary(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+  ): Promise<InvoiceSummary> {
+    return this.invoices.summary(scope, brandId);
   }
 
   @Get(':id')

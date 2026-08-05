@@ -7,22 +7,16 @@ import {
   getZohoStatus,
   listBrands,
   listCustomers,
+  getInvoiceSummary,
   listInvoices,
   type Brand,
   type Invoice,
 } from '@/lib/api';
+import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoice-presentation';
 
 export const dynamic = 'force-dynamic';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
-const OPEN_STATUSES = new Set(['SENT', 'VIEWED', 'PENDING_PAYMENT', 'PARTIALLY_PAID']);
-
-function statusTone(status: string): string {
-  if (status === 'PAID') return 'text-success';
-  if (status === 'CANCELLED') return 'text-ink-subtle';
-  if (status === 'PENDING_PAYMENT' || status === 'PARTIALLY_PAID') return 'text-warning';
-  return 'text-ink-strong';
-}
 
 function StatCard({
   icon: Icon,
@@ -74,13 +68,17 @@ export default async function DashboardPage({
   let invoices: Invoice[] = [];
   let customerNames = new Map<string, string>();
   let zohoConnected = false;
+  // Aggregated server-side: summing the current page would silently report
+  // only what happens to be on it.
+  let outstandingMinor = 0;
   let dataError: string | null = null;
 
   if (activeBrand) {
     try {
-      const [customersResult, invoicesResult, zohoStatus] = await Promise.all([
+      const [customersResult, invoicesResult, invoiceSummary, zohoStatus] = await Promise.all([
         listCustomers(activeBrand.id),
-        listInvoices(activeBrand.id),
+        listInvoices(activeBrand.id, { pageSize: 5 }),
+        getInvoiceSummary(activeBrand.id),
         getZohoStatus(activeBrand.id).catch(() => ({
           connected: false,
           organizationName: null,
@@ -89,7 +87,8 @@ export default async function DashboardPage({
         })),
       ]);
       customerTotal = customersResult.total;
-      invoices = invoicesResult;
+      invoices = invoicesResult.data;
+      outstandingMinor = invoiceSummary.outstandingMinor;
       customerNames = new Map(customersResult.data.map((c) => [c.id, c.displayName]));
       zohoConnected = zohoStatus.connected;
     } catch (cause) {
@@ -97,11 +96,8 @@ export default async function DashboardPage({
     }
   }
 
-  const outstandingMinor = invoices
-    .filter((inv) => OPEN_STATUSES.has(inv.status))
-    .reduce((sum, inv) => sum + inv.balanceMinor, 0);
   const currency = (activeBrand?.currency ?? 'USD') as 'USD';
-  const recentInvoices = invoices.slice(0, 5);
+  const recentInvoices = invoices;
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
@@ -196,8 +192,8 @@ export default async function DashboardPage({
                         <td className="px-5 py-3 text-ink-muted">
                           {customerNames.get(inv.customerId) ?? '—'}
                         </td>
-                        <td className={`px-5 py-3 font-medium ${statusTone(inv.status)}`}>
-                          {inv.status.replace('_', ' ')}
+                        <td className={`px-5 py-3 font-medium ${invoiceStatusTone(inv.status)}`}>
+                          {invoiceStatusLabel(inv.status)}
                         </td>
                         <td className="px-5 py-3 font-mono text-ink-strong">
                           {formatMinorForDisplay(inv.balanceMinor, currency)}

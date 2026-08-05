@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { CompanyDetailsInput, Scope, StoragePort } from '@fenwick/shared';
 import { storageKeys, STORAGE_PORT } from '@fenwick/shared';
+import { logoExtensionFor, storeLogo, type LogoUpload } from '../common/logo-upload.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 export interface CompanyDetailsView {
@@ -21,24 +22,10 @@ export interface MerchantOnboardingState {
   readonly onboardingComplete: boolean;
 }
 
-export interface LogoUpload {
-  readonly buffer: Buffer;
-  readonly mimetype: string;
-  readonly size: number;
-}
-
 export interface CreatedBrandSummary {
   readonly id: string;
   readonly displayName: string;
 }
-
-const MAX_LOGO_BYTES = 5 * 1024 * 1024;
-const LOGO_EXTENSION_BY_MIME: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/svg+xml': 'svg',
-};
-const LOGO_URL_TTL_SECONDS = 3600;
 
 /**
  * Onboarding, FR-ONB (TDD-001 §onboarding — company details precede any
@@ -99,28 +86,18 @@ export class MerchantService {
     );
   }
 
-  /** Same "outside any DB transaction" reasoning as BrandsService.setLogo —
-   * `put` is a network call, and withScope holds a real transaction open for
-   * its whole callback. */
+  /** Validation, storage and signing all live in common/logo-upload.ts, shared
+   * with BrandsService — see the note there on why that duplication mattered. */
   async setLogo(scope: Scope, file: LogoUpload): Promise<{ logoUrl: string }> {
-    const extension = LOGO_EXTENSION_BY_MIME[file.mimetype];
-    if (!extension) {
-      throw new BadRequestException('logo must be a JPG, PNG, or SVG image');
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      throw new BadRequestException('logo must be 5MB or smaller');
-    }
+    const extension = logoExtensionFor(file);
 
     const key = storageKeys.merchantLogo(scope.merchantId, `logo.${extension}`);
-    await this.storage.put({ key, body: file.buffer, contentType: file.mimetype, encrypt: true });
+    const logoUrl = await storeLogo(this.storage, key, file);
 
     await this.prisma.withScope(scope, (tx) =>
       tx.merchant.update({ where: { id: scope.merchantId }, data: { companyLogoKey: key } }),
     );
 
-    const logoUrl = await this.storage.getSignedUrl(key, {
-      expiresInSeconds: LOGO_URL_TTL_SECONDS,
-    });
     return { logoUrl };
   }
 
@@ -161,6 +138,24 @@ export class MerchantService {
           data: { brandStructure: 'MULTI' },
         });
         return null;
+      }
+
+      // A merchant that already has a brand is choosing how it is organised,
+      // not creating its first one — minting a second brand from the staged
+      // company details here would duplicate what it already has. Adopt the
+      // existing one instead. (Reachable whenever brands exist before the
+      // structure decision does: a merchant provisioned outside this flow, or
+      // one that added brands and only later completed onboarding.)
+      const existingBrand = await tx.brand.findFirst({
+        where: { merchantId: scope.merchantId },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (existingBrand) {
+        await tx.merchant.update({
+          where: { id: scope.merchantId },
+          data: { brandStructure: 'SINGLE', onboardingComplete: true },
+        });
+        return { id: existingBrand.id, displayName: existingBrand.displayName };
       }
 
       if (!merchant.companyLegalName || !merchant.companyBusinessType) {

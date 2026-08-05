@@ -2,37 +2,10 @@
 
 import { redirect } from 'next/navigation';
 import { ApiError, createCustomer, type CustomerAddress, type CustomerFormInput } from '@/lib/api';
+import { addressFromForm, describeApiError, emptyToNull } from '@/lib/form';
 
 export interface CreateCustomerState {
   readonly error?: string;
-}
-
-function emptyToNull(value: FormDataEntryValue | null): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
-}
-
-function readAddress(formData: FormData, prefix: string): CustomerAddress | null {
-  const address: CustomerAddress = {
-    line1: emptyToNull(formData.get(`${prefix}Line1`)),
-    line2: emptyToNull(formData.get(`${prefix}Line2`)),
-    city: emptyToNull(formData.get(`${prefix}City`)),
-    region: emptyToNull(formData.get(`${prefix}Region`)),
-    postalCode: emptyToNull(formData.get(`${prefix}PostalCode`)),
-    country: emptyToNull(formData.get(`${prefix}Country`)),
-  };
-  return Object.values(address).some((v) => v !== null) ? address : null;
-}
-
-function describeApiError(error: ApiError): string {
-  const body = error.body as { issues?: Array<{ path: string; message: string }> } | null;
-  if (body?.issues?.length) {
-    return body.issues
-      .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
-      .join(' · ');
-  }
-  return error.message;
 }
 
 /**
@@ -72,9 +45,9 @@ export async function createCustomerAction(
     return { error: 'An individual customer needs a first or last name.' };
   }
 
-  const billingAddress = readAddress(formData, 'billing');
+  const billingAddress = addressFromForm(formData, 'billing');
   const shippingAddress =
-    formData.get('sameAsBilling') === 'on' ? billingAddress : readAddress(formData, 'shipping');
+    formData.get('sameAsBilling') === 'on' ? billingAddress : addressFromForm(formData, 'shipping');
 
   const input: CustomerFormInput = {
     type,

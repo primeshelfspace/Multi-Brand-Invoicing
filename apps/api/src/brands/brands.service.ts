@@ -2,27 +2,17 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import type { Brand } from '@prisma/client';
 import type { BrandInput, Scope, StoragePort } from '@fenwick/shared';
 import { isPublicScope, storageKeys, STORAGE_PORT } from '@fenwick/shared';
+import {
+  LOGO_URL_TTL_SECONDS,
+  logoExtensionFor,
+  storeLogo,
+  type LogoUpload,
+} from '../common/logo-upload.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 export interface CreateBrandInput extends BrandInput {
   readonly invoicePrefix: string;
 }
-
-export interface LogoUpload {
-  readonly buffer: Buffer;
-  readonly mimetype: string;
-  readonly size: number;
-}
-
-const MAX_LOGO_BYTES = 5 * 1024 * 1024;
-
-const LOGO_EXTENSION_BY_MIME: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/svg+xml': 'svg',
-};
-
-const LOGO_URL_TTL_SECONDS = 3600;
 
 export type BrandWithLogo = Brand & { readonly logoUrl: string | null };
 
@@ -101,13 +91,7 @@ export class BrandsService {
    * open for its whole callback — nothing external belongs inside that.
    */
   async setLogo(scope: Scope, brandId: string, file: LogoUpload): Promise<{ logoUrl: string }> {
-    const extension = LOGO_EXTENSION_BY_MIME[file.mimetype];
-    if (!extension) {
-      throw new BadRequestException('logo must be a JPG, PNG, or SVG image');
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      throw new BadRequestException('logo must be 5MB or smaller');
-    }
+    const extension = logoExtensionFor(file);
 
     const existing = await this.prisma.withScope(scope, (tx) =>
       tx.brand.findUnique({ where: { id: brandId } }),
@@ -115,15 +99,12 @@ export class BrandsService {
     if (!existing) throw new NotFoundException('brand not found');
 
     const key = storageKeys.brandLogo(brandId, `logo.${extension}`);
-    await this.storage.put({ key, body: file.buffer, contentType: file.mimetype, encrypt: true });
+    const logoUrl = await storeLogo(this.storage, key, file);
 
     await this.prisma.withScope(scope, (tx) =>
       tx.brand.update({ where: { id: brandId }, data: { logoKey: key } }),
     );
 
-    const logoUrl = await this.storage.getSignedUrl(key, {
-      expiresInSeconds: LOGO_URL_TTL_SECONDS,
-    });
     return { logoUrl };
   }
 }

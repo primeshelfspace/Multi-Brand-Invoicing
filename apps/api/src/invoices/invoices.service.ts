@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Invoice, LineItem } from '@prisma/client';
+import { Prisma, type Invoice, type LineItem } from '@prisma/client';
 import {
   calculate,
   evaluateTransition,
@@ -8,12 +8,35 @@ import {
   parseMinor,
   quantityFrom,
   type InvoiceDraftInput,
+  type InvoiceListQuery,
+  type InvoiceStatus,
   type Scope,
 } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
 
 export type InvoiceWithLines = Invoice & { lineItems: LineItem[] };
+
+export interface InvoiceListResult {
+  readonly data: InvoiceWithLines[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+}
+
+export interface InvoiceSummary {
+  readonly outstandingMinor: number;
+  readonly openCount: number;
+}
+
+/** Statuses that still owe money and are not terminal. Mirrors the admin
+ * app's own open-status set; both derive from the same TDD-001 §8.1 lifecycle. */
+const OPEN_INVOICE_STATUSES = [
+  'SENT',
+  'VIEWED',
+  'PENDING_PAYMENT',
+  'PARTIALLY_PAID',
+] as const satisfies readonly InvoiceStatus[];
 
 /**
  * FR-INV. Draft creation and issue only — edit, cancel and duplicate follow
@@ -27,14 +50,64 @@ export class InvoicesService {
     private readonly queue: QueueService,
   ) {}
 
-  async list(scope: Scope, brandId: string): Promise<InvoiceWithLines[]> {
-    return this.prisma.withScope(scope, (tx) =>
-      tx.invoice.findMany({
-        where: { brandId },
-        include: { lineItems: { orderBy: { position: 'asc' } } },
-        orderBy: { createdAt: 'desc' },
-      }),
-    );
+  /**
+   * Paginated, matching CustomersService.list — `invoiceListQuerySchema` has
+   * existed in packages/shared since the first cut but nothing passed it here,
+   * so this loaded every invoice a brand has ever issued, each with all of its
+   * line items eagerly joined, on every dashboard and list render.
+   */
+  async list(scope: Scope, brandId: string, query: InvoiceListQuery): Promise<InvoiceListResult> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const where: Prisma.InvoiceWhereInput = { brandId };
+      if (query.customerId) where.customerId = query.customerId;
+      if (query.status?.length) where.status = { in: query.status };
+      if (query.overdueOnly) where.overdue = true;
+      if (query.search) where.number = { contains: query.search, mode: 'insensitive' };
+      if (query.dateRange && (query.dateRange.from || query.dateRange.to)) {
+        where.invoiceDate = {
+          ...(query.dateRange.from ? { gte: query.dateRange.from } : {}),
+          ...(query.dateRange.to ? { lte: query.dateRange.to } : {}),
+        };
+      }
+
+      const [data, total] = await Promise.all([
+        tx.invoice.findMany({
+          where,
+          include: { lineItems: { orderBy: { position: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+        }),
+        tx.invoice.count({ where }),
+      ]);
+
+      return { data, page: query.page, pageSize: query.pageSize, total };
+    });
+  }
+
+  /**
+   * The outstanding-balance figure, aggregated in the database.
+   *
+   * Exists because the dashboard used to fetch every invoice and sum the open
+   * ones in JavaScript — which paginating the list above would have silently
+   * turned into "the total of whatever happened to be on page one". A SUM
+   * belongs in SQL regardless; this just makes that explicit.
+   */
+  async summary(scope: Scope, brandId: string): Promise<InvoiceSummary> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const where: Prisma.InvoiceWhereInput = {
+        brandId,
+        status: { in: [...OPEN_INVOICE_STATUSES] },
+      };
+      const [aggregate, openCount] = await Promise.all([
+        tx.invoice.aggregate({ where, _sum: { balanceMinor: true } }),
+        tx.invoice.count({ where }),
+      ]);
+      return {
+        outstandingMinor: Number(aggregate._sum.balanceMinor ?? 0n),
+        openCount,
+      };
+    });
   }
 
   async findOne(scope: Scope, brandId: string, id: string): Promise<InvoiceWithLines> {

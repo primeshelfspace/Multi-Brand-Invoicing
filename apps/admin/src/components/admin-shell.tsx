@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CreditCard, LayoutDashboard, LogOut, Plug, ScrollText, Users } from 'lucide-react';
-import { logoutAction } from '@/app/(app)/logout-action';
+import { logoutAction } from '@/lib/logout-action';
 import type { Brand, CurrentUser } from '@/lib/api';
 
 const NAV_ITEMS = [

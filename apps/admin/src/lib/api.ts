@@ -400,8 +400,32 @@ export interface Invoice {
   lineItems: LineItem[];
 }
 
-export function listInvoices(brandId: string): Promise<Invoice[]> {
-  return apiFetch<Invoice[]>(`/brands/${brandId}/invoices`);
+export interface InvoiceListResponse {
+  data: Invoice[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export function listInvoices(
+  brandId: string,
+  params: { page?: number; pageSize?: number } = {},
+): Promise<InvoiceListResponse> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<InvoiceListResponse>(`/brands/${brandId}/invoices${suffix}`);
+}
+
+export interface InvoiceSummary {
+  /** Summed in the database across every open invoice, not just this page. */
+  outstandingMinor: number;
+  openCount: number;
+}
+
+export function getInvoiceSummary(brandId: string): Promise<InvoiceSummary> {
+  return apiFetch<InvoiceSummary>(`/brands/${brandId}/invoices/summary`);
 }
 
 export interface LineItemFormInput {

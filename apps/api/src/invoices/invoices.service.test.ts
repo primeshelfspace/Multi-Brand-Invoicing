@@ -207,6 +207,11 @@ describeWithDb('InvoicesService', () => {
     };
     // RLS returns "not found" rather than a distinguishable "forbidden" —
     // deliberately, so a probe cannot tell scope-denial from non-existence.
-    await expect(invoices.list(salesUser, solsticeId)).resolves.toEqual([]);
+    // The list is paginated now, so the assertion is on its rows rather than
+    // the response envelope — the property under test is unchanged: RLS makes
+    // another brand's invoices return nothing at all.
+    const denied = await invoices.list(salesUser, solsticeId, { page: 1, pageSize: 25 });
+    expect(denied.data).toEqual([]);
+    expect(denied.total).toBe(0);
   });
 });

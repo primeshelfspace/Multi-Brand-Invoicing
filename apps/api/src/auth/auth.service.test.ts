@@ -43,6 +43,23 @@ interface AuditRow {
 
 /** Just enough of PrismaService for the unscoped paths login actually touches. */
 function fakePrisma(users: UserRow[], audit: AuditRow[]) {
+  /** Mirrors the subset of Prisma's filter semantics these queries rely on —
+   * notably that occurredAt may be bounded by gte (inclusive) or gt
+   * (exclusive), which is what distinguishes "within the window" from
+   * "since the last success". */
+  const matching = (where: Record<string, unknown>) => {
+    const occurredAt = where['occurredAt'] as { gte?: Date; gt?: Date } | undefined;
+    return audit.filter(
+      (row) =>
+        row.merchantId === where['merchantId'] &&
+        row.actorId === where['actorId'] &&
+        row.action === where['action'] &&
+        row.outcome === where['outcome'] &&
+        (!occurredAt?.gte || row.occurredAt >= occurredAt.gte) &&
+        (!occurredAt?.gt || row.occurredAt > occurredAt.gt),
+    );
+  };
+
   const client = {
     user: {
       findMany: async ({ where }: { where: { email: string } }) =>
@@ -59,15 +76,13 @@ function fakePrisma(users: UserRow[], audit: AuditRow[]) {
         audit.push(row);
         return row;
       },
-      count: async ({ where }: { where: Record<string, unknown> }) =>
-        audit.filter(
-          (row) =>
-            row.merchantId === where['merchantId'] &&
-            row.actorId === where['actorId'] &&
-            row.action === where['action'] &&
-            row.outcome === where['outcome'] &&
-            row.occurredAt >= (where['occurredAt'] as { gte: Date }).gte,
-        ).length,
+      count: async ({ where }: { where: Record<string, unknown> }) => matching(where).length,
+      // Used to find the last successful sign-in, so the lockout counts only
+      // failures since then (FR-AUTH-002 is about *consecutive* failures).
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        const rows = matching(where).sort((a, b) => +b.occurredAt - +a.occurredAt);
+        return rows[0] ?? null;
+      },
     },
   };
 
@@ -191,6 +206,29 @@ describe('AuthService.login', () => {
     const lockedFor = users[0]!.lockedUntil!.getTime() - Date.now();
     expect(lockedFor).toBeGreaterThan(29 * 60_000);
     expect(lockedFor).toBeLessThanOrEqual(30 * 60_000);
+  });
+
+  // FR-AUTH-002 says *consecutive*. A successful sign-in ends any run of
+  // failures, so the four below must not be counted toward the fifth.
+  // Regression: the count was taken from the audit trail over the whole
+  // window with no regard for the success in the middle, so this sequence
+  // locked the account on a single mistyped password.
+  it('does not count failures from before a successful sign-in', async () => {
+    for (let i = 0; i < 4; i += 1) {
+      await expect(auth.login({ ...attempt, password: 'wrong' })).rejects.toThrow();
+    }
+    expect(users[0]!.failedLogins).toBe(4);
+
+    await expect(auth.login(attempt)).resolves.toBeDefined();
+    expect(users[0]!.failedLogins).toBe(0);
+    expect(users[0]!.lockedUntil).toBeNull();
+
+    await expect(auth.login({ ...attempt, password: 'wrong' })).rejects.toThrow();
+
+    expect(users[0]!.failedLogins).toBe(1);
+    expect(users[0]!.lockedUntil).toBeNull();
+    // And the account is still usable, which is the property that actually matters.
+    await expect(auth.login(attempt)).resolves.toBeDefined();
   });
 
   it('ignores failures that fall outside the 15-minute window', async () => {

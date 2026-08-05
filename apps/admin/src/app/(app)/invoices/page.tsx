@@ -3,19 +3,13 @@ import { Plus, ScrollText } from 'lucide-react';
 import { formatMinorForDisplay } from '@fenwick/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, listBrands, listInvoices, type Brand, type Invoice } from '@/lib/api';
+import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoice-presentation';
 
 export const dynamic = 'force-dynamic';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
 const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
-
-function statusTone(status: string): string {
-  if (status === 'PAID') return 'text-success';
-  if (status === 'CANCELLED') return 'text-ink-subtle';
-  if (status === 'PENDING_PAYMENT' || status === 'PARTIALLY_PAID') return 'text-warning';
-  return 'text-ink-strong';
-}
 
 export default async function InvoicesPage({
   searchParams,
@@ -38,7 +32,7 @@ export default async function InvoicesPage({
   let invoicesError: string | null = null;
   if (activeBrand) {
     try {
-      invoices = await listInvoices(activeBrand.id);
+      invoices = (await listInvoices(activeBrand.id)).data;
     } catch (cause) {
       invoicesError = cause instanceof ApiError ? cause.message : String(cause);
     }
@@ -119,8 +113,8 @@ export default async function InvoicesPage({
                     {invoices.map((inv) => (
                       <tr key={inv.id} className="border-b border-border last:border-0">
                         <td className="px-5 py-3 font-medium text-ink-strong">{inv.number}</td>
-                        <td className={`px-5 py-3 font-medium ${statusTone(inv.status)}`}>
-                          {inv.status.replace('_', ' ')}
+                        <td className={`px-5 py-3 font-medium ${invoiceStatusTone(inv.status)}`}>
+                          {invoiceStatusLabel(inv.status)}
                         </td>
                         <td className="px-5 py-3 font-mono text-ink-strong">
                           {formatMinorForDisplay(inv.totalMinor, inv.currency as 'USD')}

@@ -2,15 +2,10 @@
 
 import { redirect } from 'next/navigation';
 import { ApiError, createInvoice, issueInvoice, type LineItemFormInput } from '@/lib/api';
+import { describeApiError, emptyToNull } from '@/lib/form';
 
 export interface CreateInvoiceState {
   readonly error?: string;
-}
-
-function emptyToNull(value: FormDataEntryValue | null): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
 }
 
 /** "6" or "2.9" (a percentage) -> basis points, rounded. */
@@ -18,19 +13,6 @@ function percentToBp(value: FormDataEntryValue | null): number {
   const percent = Number(typeof value === 'string' ? value : '0');
   if (!Number.isFinite(percent)) return 0;
   return Math.round(percent * 100);
-}
-
-function describeApiError(error: ApiError): string {
-  const body = error.body as {
-    issues?: Array<{ path: string; message: string }>;
-    message?: string;
-  } | null;
-  if (body?.issues?.length) {
-    return body.issues
-      .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
-      .join(' · ');
-  }
-  return body?.message ?? error.message;
 }
 
 /**
