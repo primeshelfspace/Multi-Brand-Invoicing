@@ -45,7 +45,9 @@ async function bootstrap(): Promise<void> {
   const corsOrigins = [
     env.ADMIN_PUBLIC_URL,
     env.PAYMENT_PUBLIC_URL,
-    ...(env.CORS_ALLOWED_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? []),
+    ...(env.CORS_ALLOWED_ORIGINS?.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean) ?? []),
   ];
   app.enableCors({
     origin: [...new Set(corsOrigins)],
