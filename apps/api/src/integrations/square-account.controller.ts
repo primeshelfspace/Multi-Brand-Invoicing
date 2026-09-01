@@ -16,53 +16,48 @@ import { zodPipe } from '../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../config/env.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
-import { StripeAccountService, type StripeAccountStatus } from './stripe-account.service.js';
+import { SquareAccountService, type SquareAccountStatus } from './square-account.service.js';
 
 /**
- * Stripe Connect, per brand. The brand admin authorises the platform on
- * Stripe's own consent screen; nothing here ever accepts an API key.
- *
- * Shaped deliberately like ZohoConnectController — same signed-state
- * handshake, same reason the callback is @Public (the provider's redirect
- * arrives as a fresh browser request carrying no session).
+ * Square Connect, per brand. Shaped identically to StripeAccountController —
+ * same signed-state handshake, same reason the callback is @Public (Square's
+ * redirect arrives as a fresh browser request carrying no session).
  */
 @Controller()
-export class StripeAccountController {
+export class SquareAccountController {
   constructor(
-    private readonly stripeAccounts: StripeAccountService,
+    private readonly squareAccounts: SquareAccountService,
     private readonly systemScope: SystemScopeResolver,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  @Get('brands/:brandId/integrations/stripe/status')
+  @Get('brands/:brandId/integrations/square/status')
   @RequirePermission('INTEGRATIONS', 'READ')
   getStatus(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @CurrentScope() scope: Scope,
-  ): Promise<StripeAccountStatus> {
-    return this.stripeAccounts.getStatus(scope, brandId);
+  ): Promise<SquareAccountStatus> {
+    return this.squareAccounts.getStatus(scope, brandId);
   }
 
-  /** Redirects to Stripe's consent screen. A GET that redirects, so the admin
+  /** Redirects to Square's consent screen. A GET that redirects, so the admin
    * UI can be a plain link rather than a fetch the browser cannot follow
    * cross-origin. */
-  @Get('brands/:brandId/integrations/stripe/connect')
+  @Get('brands/:brandId/integrations/square/connect')
   @RequirePermission('INTEGRATIONS', 'WRITE')
   connect(@Param('brandId', zodPipe(idSchema)) brandId: string, @Res() response: Response): void {
     try {
-      response.redirect(this.stripeAccounts.buildAuthorizeUrl(brandId));
+      response.redirect(this.squareAccounts.buildAuthorizeUrl(brandId));
     } catch (cause) {
       throw this.mapIntegrationError(cause);
     }
   }
 
   /**
-   * Stripe's redirect back. Public because it arrives with no session cookie —
-   * the signed `state` is what proves which brand began the flow, and the
-   * system scope is minted from that rather than from a caller who cannot be
-   * authenticated here.
+   * Square's redirect back. Public because it arrives with no session
+   * cookie — the signed `state` is what proves which brand began the flow.
    */
-  @Get('integrations/stripe/callback')
+  @Get('integrations/square/callback')
   @Public()
   async callback(
     @Query('code') code: string | undefined,
@@ -70,46 +65,46 @@ export class StripeAccountController {
     @Query('error') error: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
-    // The Stripe panel lives on the Payment Gateways tab of /brand-settings —
-    // there is no standalone /settings/stripe page.
+    // The Square panel lives on the Payment Gateways tab of /brand-settings,
+    // same as Stripe's.
     const settingsUrl = `${this.env.ADMIN_PUBLIC_URL}/brand-settings`;
     const tab = 'tab=payments';
 
     if (error) {
-      response.redirect(`${settingsUrl}?${tab}&stripeError=${encodeURIComponent(error)}`);
+      response.redirect(`${settingsUrl}?${tab}&squareError=${encodeURIComponent(error)}`);
       return;
     }
     if (!code || !state) {
       throw new BadRequestException('missing code or state');
     }
 
-    const verified = this.stripeAccounts.verifyCallbackState(state);
+    const verified = this.squareAccounts.verifyCallbackState(state);
     if (!verified) {
-      response.redirect(`${settingsUrl}?${tab}&stripeError=invalid_or_expired_state`);
+      response.redirect(`${settingsUrl}?${tab}&squareError=invalid_or_expired_state`);
       return;
     }
     const { brandId } = verified;
 
-    const scope = await this.systemScope.forBrand(brandId, 'stripe-oauth-callback');
+    const scope = await this.systemScope.forBrand(brandId, 'square-oauth-callback');
     if (!scope) {
-      response.redirect(`${settingsUrl}?${tab}&stripeError=unknown_brand`);
+      response.redirect(`${settingsUrl}?${tab}&squareError=unknown_brand`);
       return;
     }
 
     try {
-      await this.stripeAccounts.completeConnection(scope, brandId, code);
+      await this.squareAccounts.completeConnection(scope, brandId, code);
     } catch (cause) {
       const message = cause instanceof IntegrationError ? cause.message : 'connection_failed';
       response.redirect(
-        `${settingsUrl}?${tab}&brandId=${brandId}&stripeError=${encodeURIComponent(message)}`,
+        `${settingsUrl}?${tab}&brandId=${brandId}&squareError=${encodeURIComponent(message)}`,
       );
       return;
     }
 
-    response.redirect(`${settingsUrl}?${tab}&brandId=${brandId}&stripeConnected=1`);
+    response.redirect(`${settingsUrl}?${tab}&brandId=${brandId}&squareConnected=1`);
   }
 
-  @Post('brands/:brandId/integrations/stripe/disconnect')
+  @Post('brands/:brandId/integrations/square/disconnect')
   @HttpCode(200)
   @RequirePermission('INTEGRATIONS', 'WRITE')
   async disconnect(
@@ -117,15 +112,13 @@ export class StripeAccountController {
     @CurrentScope() scope: Scope,
   ): Promise<{ ok: true }> {
     try {
-      await this.stripeAccounts.disconnect(scope, brandId);
+      await this.squareAccounts.disconnect(scope, brandId);
     } catch (cause) {
       throw this.mapIntegrationError(cause);
     }
     return { ok: true };
   }
 
-  /** A provider refusal is the request failing against a live service, not this
-   * API misbehaving — 400/502, not a bare 500. */
   private mapIntegrationError(cause: unknown): Error {
     if (cause instanceof IntegrationError) {
       if (cause.errorClass === 'TRANSIENT') {
